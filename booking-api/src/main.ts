@@ -46,7 +46,14 @@ async function bootstrap(): Promise<void> {
     SwaggerModule.setup('api/docs', app, document);
   }
 
-  await app.listen(Number(process.env.PORT ?? 3000));
+  const port = Number(process.env.PORT ?? 3000);
+  await app.listen(port, '0.0.0.0');
+  // eslint-disable-next-line no-console
+  console.log(`booking-api listening on 0.0.0.0:${port}`);
 }
 
-void bootstrap();
+void bootstrap().catch((error: unknown) => {
+  // eslint-disable-next-line no-console
+  console.error('Fatal bootstrap error', error);
+  process.exit(1);
+});

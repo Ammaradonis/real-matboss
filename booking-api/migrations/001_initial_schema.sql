@@ -1,4 +1,11 @@
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+DO $$
+BEGIN
+  CREATE EXTENSION IF NOT EXISTS pgcrypto;
+EXCEPTION
+  WHEN insufficient_privilege THEN
+    RAISE NOTICE 'Skipping pgcrypto extension CREATE: insufficient privilege';
+END
+$$;
 DO $$
 BEGIN
   CREATE EXTENSION IF NOT EXISTS btree_gist;
