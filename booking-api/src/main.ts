@@ -46,7 +46,9 @@ async function bootstrap(): Promise<void> {
     SwaggerModule.setup('api/docs', app, document);
   }
 
-  const port = Number(process.env.PORT ?? 3000);
+  const rawPort = process.env.PORT ?? '3000';
+  const parsedPort = Number.parseInt(rawPort.replace(/^\"|\"$/g, ''), 10);
+  const port = Number.isFinite(parsedPort) ? parsedPort : 3000;
   await app.listen(port, '0.0.0.0');
   // eslint-disable-next-line no-console
   console.log(`booking-api listening on 0.0.0.0:${port}`);
