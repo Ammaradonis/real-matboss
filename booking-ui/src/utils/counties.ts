@@ -1,4 +1,4 @@
-import countiesRaw from '../../../all-us-counties.txt?raw';
+import countiesRaw from '../../all-us-counties.txt?raw';
 
 export interface StateCountyMap {
   state: string;
