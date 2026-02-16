@@ -5,8 +5,8 @@ builder = "NIXPACKS"
 numReplicas = 1
 restartPolicyType = "ON_FAILURE"
 startCommand = "node scripts/migrate.js && node dist/main.js"
-healthcheckPath = "/api/v1/health/ready"
-healthcheckTimeout = 100
+healthcheckPath = "/api/v1/health"
+healthcheckTimeout = 180
 
 [env]
 NODE_ENV = "production"
