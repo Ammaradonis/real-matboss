@@ -1,5 +1,14 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
-CREATE EXTENSION IF NOT EXISTS btree_gist;
+DO $$
+BEGIN
+  CREATE EXTENSION IF NOT EXISTS btree_gist;
+EXCEPTION
+  WHEN insufficient_privilege THEN
+    RAISE NOTICE 'Skipping btree_gist extension: insufficient privilege';
+  WHEN undefined_file THEN
+    RAISE NOTICE 'Skipping btree_gist extension: extension is unavailable on this Postgres instance';
+END
+$$;
 
 DO $$
 BEGIN
@@ -197,13 +206,21 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 ALTER TABLE bookings
   DROP CONSTRAINT IF EXISTS bookings_no_overlaps;
 
-ALTER TABLE bookings
-  ADD CONSTRAINT bookings_no_overlaps
-  EXCLUDE USING gist (
-    provider_id WITH =,
-    tstzrange(start_ts, end_ts, '[)') WITH &&
-  )
-  WHERE (status IN ('PENDING', 'CONFIRMED'));
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'btree_gist') THEN
+    ALTER TABLE bookings
+      ADD CONSTRAINT bookings_no_overlaps
+      EXCLUDE USING gist (
+        provider_id WITH =,
+        tstzrange(start_ts, end_ts, '[)') WITH &&
+      )
+      WHERE (status IN ('PENDING', 'CONFIRMED'));
+  ELSE
+    RAISE NOTICE 'Skipping bookings_no_overlaps EXCLUDE constraint because btree_gist extension is unavailable';
+  END IF;
+END
+$$;
 
 CREATE INDEX IF NOT EXISTS idx_bookings_provider_time ON bookings(provider_id, start_ts);
 CREATE INDEX IF NOT EXISTS idx_bookings_active ON bookings(provider_id, start_ts, end_ts)
