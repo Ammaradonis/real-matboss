@@ -1,0 +1,13 @@
+[build]
+builder = "NIXPACKS"
+buildCommand = "npm --prefix booking-api ci && npm --prefix booking-api run build"
+
+[deploy]
+restartPolicyType = "ON_FAILURE"
+startCommand = "node booking-api/scripts/migrate.js && node booking-api/dist/main.js"
+healthcheckPath = "/api/v1/health/ready"
+healthcheckTimeout = 100
+
+[env]
+NODE_ENV = "production"
+PORT = "3000"
