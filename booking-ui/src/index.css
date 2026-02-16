@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
+  background: radial-gradient(circle at top right, #1f3047, #0c111b 52%, #080c13);
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: transparent;
+}
+
+.btn-primary {
+  @apply rounded-xl border border-mat-cyan/60 bg-mat-cyan/20 px-4 py-2 text-sm font-medium text-mat-ink transition hover:bg-mat-cyan/30 disabled:cursor-not-allowed disabled:opacity-40;
+}
+
+.btn-secondary {
+  @apply rounded-xl border border-white/20 bg-transparent px-4 py-2 text-sm font-medium text-slate-300 transition hover:border-mat-gold/50 hover:text-mat-ink;
+}
+
+.input {
+  @apply rounded-xl border border-white/15 bg-mat-panel px-3 py-2 text-sm text-mat-ink placeholder:text-slate-500 focus:border-mat-cyan focus:outline-none;
+}

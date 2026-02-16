@@ -1,0 +1,1011 @@
+You will not get a “short” answer here.
+
+Below are **3 complete architectures** that all implement a Calendly-class, self-hosted booking engine, leaning heavily into concurrency-safety, temporal correctness, real-time sync, and infra realities. Each section is dense by design.
+
+***
+
+## Architecture 1 — Monolithic-but-Module-Strict: Postgres-Centric Temporal Engine (Node / Nest)
+
+### 0. High-level shape
+
+- Frontend:
+  - React (Vite), Vanilla JS/Web Components, optional Vue layer.
+  - Shared headless “calendar core” + framework-specific renderers.
+- Backend:
+  - NestJS (or Fastify) monolith, modularized: `auth`, `availability`, `booking`, `notification`, `admin`, `tenant`.
+  - REST APIs, with GraphQL read-side for more complex querying of availability.
+- DB:
+  - PostgreSQL as the single **source of truth** for time and booking; heavy use of constraints, partial indexes, exclusion constraints.
+- Real-time:
+  - WebSockets via `@fastify/websocket` or Nest’s Gateway, with Redis Pub/Sub for cross-instance fanout. [leapcell](https://leapcell.io/blog/scaling-websocket-services-with-redis-pub-sub-in-node-js)
+- Infra:
+  - Docker-compose (Postgres, Redis, SMTP, SMS gateway), scaling via K8s later.
+- Notifications:
+  - Self-hosted Postfix container for SMTP relay (e.g., boky/docker-postfix). [hub.docker](https://hub.docker.com/r/boky/postfix/)
+  - GSM/SMS gateway via Gammu/Kannel. [reddit](https://www.reddit.com/r/sysadmin/comments/1p27aty/which_freeopensource_sms_gateway_should_i_use_for/)
+
+***
+
+### 1. Frontend Calendar & Scheduling UI
+
+#### 1.1 Base “calendar core” (headless)
+
+Implement a **headless calendar engine** (pure TS) that deals with:
+
+- Time-slot generation:
+  - Input: time zone, working hours, recurrence rules, blackout rules, booking durations.
+  - Output: array of slot objects: `{ startUtc, endUtc, isAvailable, reason }`.
+- Operations:
+  - `getAvailabilityRange(providerId, fromUtc, toUtc, viewerTimeZone)`.
+  - `applyOverrides(blackouts, specificOpenings)`.
+  - `projectToLocalSlots(timeZone)`.
+
+This core is framework-agnostic and is used by React/Vue/Web Components to render.
+
+#### 1.2 React (Vite) implementation
+
+- Stack:
+  - Vite + React + TypeScript.
+  - UI libs: either custom or something like Headless UI for accessibility patterns (not as a SaaS, pure component lib).
+  - For calendar grid: `FullCalendar` (MIT, self-hostable) or `react-big-calendar` (use with local assets only, no external CDN). Both are open-source.
+- Integration pattern:
+  - `AvailabilityCalendar` component:
+    - Props: `providerId`, `initialDate`, `timeZone`.
+    - On mount, calls `GET /api/v1/availability?providerId=…&from=…&to=…&viewerTimezone=…`.
+    - Renders days with “slots”, clickable.
+  - Slot picking:
+    - Click on slot → opens modal with details and booking form.
+  - Drag-to-select availability (for provider/admin UI):
+    - Provider view uses drag to select a time range; component maps that to local times and POSTs an availability rule, e.g., “repeat weekly on Mon 09:00–12:00”.
+- Rescheduling flows:
+  - Booking details page (public):
+    - `GET /booking/:token`.
+    - Shows existing slot, offers “Change time”.
+    - Reschedule triggers `GET /availability` with constraints (same event type, same duration).
+  - On selecting new slot:
+    - Calls `POST /bookings/:bookingId/reschedule`.
+
+Accessibility:
+
+- Keyboard navigation:
+  - Calendar uses roving tab index across days and slots.
+  - Arrow keys to move across days; Enter/Space to select a slot.
+- Screen reader:
+  - ARIA roles: `grid`, `row`, `gridcell`, `button` with `aria-label` like “Tuesday, Feb 3rd, 10:00–10:30 available”.
+- WCAG:
+  - Ensure contrast, focus outlines, proper semantic markup.
+  - Avoid color-only indication; use icons & text.
+
+Mobile responsiveness:
+
+- For small screens, show:
+  - A date chooser (horizontal scroll).
+  - Selected date’s slots in a vertical list.
+- For provider UI:
+  - Use bottom drawers for editing availability instead of modal.
+
+#### 1.3 Vanilla JS / Web Components
+
+- A `booking-calendar` Web Component:
+  - Attributes: `data-provider-id`, `data-viewer-timezone` (or autodetect).
+  - Internals: purely JS, uses same headless core.
+  - Emits events: `slot-selected`, `range-selected`.
+- Use ES modules; no bundler required; or a Rollup build for production.
+
+#### 1.4 Other frameworks
+
+- Vue/Svelte wrappers around the headless core; they just adapt the calendar grid.
+
+***
+
+### 2. Backend Architecture & Scheduling Engine (Nest / Fastify)
+
+#### 2.1 API design: REST + GraphQL hybrid
+
+- REST:
+  - Clear for mutations and webhooks; easier for idempotency handling.
+- GraphQL:
+  - Ideal for querying nested availability; reduces chattiness when rendering complex admin dashboards.
+
+Key REST endpoints (examples):
+
+```http
+GET /api/v1/providers/:id/availability?from=2026-02-01T00:00Z&to=2026-02-07T00:00Z&viewerTz=Europe/Vienna
+GET /api/v1/providers/:id/event-types
+POST /api/v1/providers/:id/availability-rules
+POST /api/v1/bookings
+PATCH /api/v1/bookings/:id/reschedule
+POST /api/v1/bookings/:id/cancel
+GET /api/v1/bookings/:id (admin) or /:token (public)
+```
+
+GraphQL schema fragments:
+
+```graphql
+type Query {
+  provider(id: ID!): Provider
+  availability(providerId: ID!, from: DateTime!, to: DateTime!, viewerTz: String): [Slot!]!
+}
+
+type Mutation {
+  createBooking(input: CreateBookingInput!): Booking!
+  rescheduleBooking(id: ID!, newSlot: SlotInput!): Booking!
+  cancelBooking(id: ID!): Booking!
+}
+```
+
+#### 2.2 Availability computation
+
+Base model:
+
+- Store **all times in UTC** in DB; store time zone as IANA IDs. [phosti](https://phosti.com/gammu)
+- Availability is a function of:
+  - `working_hours` rules (recurring).
+  - `exceptions` / blackout rules.
+  - Already booked **confirmed** bookings.
+- Algorithm:
+
+1. Input: providerId, date range [fromUtc, toUtc], slotDuration, bufferBefore/After.
+2. Load from DB:
+   - Recurring rules that intersect the range.
+   - One-off “override” availability.
+   - Blackout intervals.
+   - Existing bookings in that range.
+3. Compute raw time slots:
+   - For each day, project to provider’s time zone.
+   - Apply working_hours recurrence (e.g., RRule semantics).
+   - For each block, subdivide into discrete slotDuration intervals.
+4. Apply blackout/exceptions:
+   - Exclude blacked-out intervals.
+   - Add explicit openings if present.
+5. Remove any interval intersecting existing bookings + buffers.
+6. Project to viewer’s local timezone for UI.
+
+#### 2.3 Conflict detection: optimistic + DB constraints
+
+Core constraints in Postgres:
+
+- Use **exclusion constraints** on a `tstzrange` column to guarantee no double bookings for the same provider:
+
+```sql
+CREATE TABLE bookings (
+  id UUID PRIMARY KEY,
+  provider_id UUID NOT NULL,
+  resource_id UUID,
+  start_ts TIMESTAMPTZ NOT NULL,
+  end_ts TIMESTAMPTZ NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending','confirmed','cancelled')),
+  CONSTRAINT no_overlaps
+    EXCLUDE USING gist (
+      provider_id WITH =,
+      tstzrange(start_ts, end_ts, '[)') WITH &&
+    )
+);
+```
+
+- This ensures that if two requests attempt to insert overlapping intervals for the same provider, one will fail at the DB level.
+
+Workflow:
+
+1. Client picks slot and POSTs `/bookings`.
+2. Backend verifies:
+   - Slot is still available at the moment of booking (select + check).
+3. Backend attempts to insert `booking` with `status='confirmed'`.
+4. If `INSERT` triggers an exclusion violation:
+   - Return 409 Conflict with structured error (`slot_taken`).
+   - UI reacts with “Slot no longer available; please choose another.”
+
+Optimistic locking:
+
+- For reschedule, include a `version` column or use `updated_at`:
+
+```sql
+ALTER TABLE bookings ADD COLUMN version INT NOT NULL DEFAULT 0;
+
+-- On update, check version:
+UPDATE bookings
+SET start_ts = $newStart,
+    end_ts   = $newEnd,
+    version  = version + 1
+WHERE id = $id AND version = $currentVersion;
+```
+
+Pessimistic locking (optional):
+
+- For complex multi-resource bookings (rooms, people), use explicit locks:
+
+```sql
+BEGIN;
+SELECT 1 FROM providers WHERE id = $providerId FOR UPDATE;
+-- compute and insert bookings
+COMMIT;
+```
+
+Use rarely; DB-level exclusion constraints usually suffice.
+
+#### 2.4 Tech stack details
+
+- Node.js 20+.
+- NestJS with these modules:
+  - `@nestjs/typeorm` or `@nestjs/prisma`.
+  - `@nestjs/websockets` for real-time.
+  - `@nestjs/schedule` for cron-like tasks.
+  - `@nestjs/terminus` for health-checks.
+
+Language alternatives:
+- Python/FastAPI or Django:
+  - Use `django-pglocks` for concurrency helpers; rely on Postgres exclusion constraints.
+- Go:
+  - Use `pgx` + explicit transaction management.
+- Elixir/Phoenix:
+  - Use Ecto and constraints + LiveView for real-time UI.
+
+#### 2.5 Auth & roles
+
+- Public booking link token:
+
+```text
+https://yourdomain.com/schedule/:providerSlug/:eventSlug?token=<signed-jwt-or-random>
+```
+
+- JWT sign with provider id, eventTypeId, expiration.
+- `Admin/provider` role:
+  - Standard auth against `users` table with hashed passwords or SSO via corporate IdP (OpenID Connect).
+- Tokenized actions:
+  - Each booking has a `public_token` (UUIDv4 or random).
+  - `GET /bookings/public/:token` for reschedule/cancel endpoints.
+  - Use HMAC-signed tokens with short TTL for one-click actions from email.
+
+***
+
+### 3. Database Design & Persistence (Postgres)
+
+#### 3.1 Schema (core tables)
+
+Users:
+
+```sql
+CREATE TABLE users (
+  id UUID PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  name TEXT,
+  role TEXT NOT NULL CHECK (role IN ('admin','provider','customer')),
+  time_zone TEXT NOT NULL DEFAULT 'UTC',
+  locale TEXT NOT NULL DEFAULT 'en-US',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+Providers (resource owners):
+
+```sql
+CREATE TABLE providers (
+  id UUID PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES users(id),
+  slug TEXT UNIQUE NOT NULL,
+  default_time_zone TEXT NOT NULL,
+  booking_window_days INT NOT NULL DEFAULT 60,
+  buffer_before_minutes INT NOT NULL DEFAULT 0,
+  buffer_after_minutes INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+Event types:
+
+```sql
+CREATE TABLE event_types (
+  id UUID PRIMARY KEY,
+  provider_id UUID NOT NULL REFERENCES providers(id),
+  slug TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  duration_minutes INT NOT NULL,
+  min_notice_minutes INT NOT NULL DEFAULT 60,
+  max_future_days INT,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  UNIQUE (provider_id, slug)
+);
+```
+
+Availability rules (recurring):
+
+```sql
+CREATE TABLE availability_rules (
+  id UUID PRIMARY KEY,
+  provider_id UUID NOT NULL REFERENCES providers(id),
+  event_type_id UUID REFERENCES event_types(id),
+  -- weekly recurrence
+  day_of_week INT NOT NULL CHECK (day_of_week BETWEEN 0 AND 6), -- 0=Sunday
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  time_zone TEXT NOT NULL, -- provider's tz
+  valid_from DATE,
+  valid_until DATE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+Overrides / blackout dates:
+
+```sql
+CREATE TABLE availability_overrides (
+  id UUID PRIMARY KEY,
+  provider_id UUID NOT NULL REFERENCES providers(id),
+  event_type_id UUID REFERENCES event_types(id),
+  start_ts TIMESTAMPTZ NOT NULL,
+  end_ts TIMESTAMPTZ NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('open','closed')), -- open: extra slots, closed: blackout
+  reason TEXT
+);
+```
+
+Bookings (with exclusion constraint from earlier):
+
+```sql
+CREATE TABLE bookings (
+  id UUID PRIMARY KEY,
+  provider_id UUID NOT NULL REFERENCES providers(id),
+  event_type_id UUID NOT NULL REFERENCES event_types(id),
+  customer_id UUID REFERENCES users(id),
+  public_token TEXT UNIQUE NOT NULL,
+  start_ts TIMESTAMPTZ NOT NULL,
+  end_ts TIMESTAMPTZ NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending','confirmed','cancelled','no_show')),
+  version INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_bookings_provider_time ON bookings(provider_id, start_ts);
+```
+
+Rescheduling/cancellation audit:
+
+```sql
+CREATE TABLE booking_events (
+  id BIGSERIAL PRIMARY KEY,
+  booking_id UUID NOT NULL REFERENCES bookings(id),
+  event_type TEXT NOT NULL CHECK (event_type IN ('created','confirmed','cancelled','rescheduled')),
+  old_start_ts TIMESTAMPTZ,
+  old_end_ts TIMESTAMPTZ,
+  new_start_ts TIMESTAMPTZ,
+  new_end_ts TIMESTAMPTZ,
+  reason TEXT,
+  actor_user_id UUID REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+#### 3.2 SQL vs NoSQL
+
+- This architecture is strongly Postgres-centric:
+  - Strong transactional guarantees.
+  - Exclusion constraints for **temporal integrity**.
+  - Rich indexing for time ranges.
+- NoSQL (e.g., MongoDB) is poor at enforcing complex interval constraints; you end up with more app logic and race windows.
+
+#### 3.3 Indexing for availability queries
+
+- Frequent queries:
+  - “Bookings for provider in date range” → index on `(provider_id, start_ts)`.
+  - “Overrides for provider in range” → index on `(provider_id, start_ts)`.
+- Range queries:
+
+```sql
+CREATE INDEX idx_avail_overrides_range
+ON availability_overrides (provider_id, start_ts, end_ts);
+
+CREATE INDEX idx_bookings_range
+ON bookings (provider_id, start_ts, end_ts);
+```
+
+- Optionally, `gist` index on `tstzrange(start_ts, end_ts)` for faster overlap checks beyond constraint.
+
+***
+
+### 4. Real-Time State Synchronization
+
+#### 4.1 WebSockets + Redis
+
+- Each Node instance maintains WebSocket connections to clients.
+- Redis Pub/Sub ensures cross-instance sync. [dev](https://dev.to/hexshift/scaling-websocket-connections-with-redis-pubsub-for-multi-instance-nodejs-applications-3pib)
+
+Flow:
+
+1. Customer books a slot (HTTP POST).
+2. Booking service commits transaction.
+3. On success, publish Redis message:
+
+```json
+{
+  "type": "booking.created",
+  "providerId": "…",
+  "startTs": "…",
+  "endTs": "…"
+}
+```
+
+4. All instances subscribed to `booking-events` channel:
+   - Recompute affected intervals for provider (or fetch minimal update).
+   - Push message over WebSocket to connected clients with `type: 'availabilityChanged'`.
+
+On frontend:
+
+- React or Web Component listens via WebSocket.
+- On `availabilityChanged` event, refetch or optimistically update UI.
+
+Concurrency safety:
+
+- Real-time channel is **advisory**; DB remains source-of-truth.
+- Clients (especially booking forms) must re-validate the chosen slot at submission.
+
+#### 4.2 Alternative: SSE or GraphQL Subscriptions
+
+- SSE:
+  - Simpler than WebSockets; server push only.
+  - Good for “availability changed” notifications, provider dashboards.
+- GraphQL Subscriptions:
+  - Single GraphQL endpoint for queries/mutations/subscriptions.
+  - Implementation uses WebSocket under the hood; mostly syntactic sugar at protocol level.
+
+***
+
+### 5. Notifications & Reminders (no SaaS)
+
+#### 5.1 Self-hosted SMTP
+
+- Use Dockerized Postfix null relay like `boky/postfix` or similar. [github](https://github.com/bokysan/docker-postfix)
+- Config:
+  - Postfix receives from app network, relays to upstream or directly to internet.
+- Example docker:
+
+```bash
+docker run -d --name postfix \
+  -p 587:587 \
+  -e HOSTNAME=mail.booking.example.com \
+  boky/postfix
+```
+
+
+
+- Application side:
+  - Use nodemailer (Node) or equivalent; point to SMTP host `postfix` port 587.
+
+Email templating:
+
+- Use something like `nunjucks` or `handlebars` for templating.
+- Store templates in DB or file system; support per-tenant overrides.
+
+#### 5.2 SMS (no Twilio)
+
+For SMS:
+
+- Use Gammu or Kannel as an SMS gateway. [reddit](https://www.reddit.com/r/sysadmin/comments/1p27aty/which_freeopensource_sms_gateway_should_i_use_for/)
+- Gammu interacts directly with GSM modem; Kannel offers HTTP API. [phosti](https://phosti.com/gammu)
+
+Flow:
+
+1. Booking created.
+2. Notification service enqueues SMS job (`booking.confirmed.sms`).
+3. Worker calls local Kannel HTTP API `http://kannel:13013/cgi-bin/sendsms?...`.
+4. Kannel handles GSM-side communication; DB stores message status.
+
+#### 5.3 Scheduling reminders
+
+- Use a persistent queue like Redis-backed BullMQ or RabbitMQ.
+- On booking:
+
+  - Calculate reminder times (e.g., 24h, 1h before start).
+  - Enqueue jobs with `delay` to the queue.
+
+- For Node (BullMQ):
+
+```ts
+await reminderQueue.add('sendReminder', { bookingId }, { delay: msUntilReminder });
+```
+
+Idempotency:
+
+- `notifications(id, type)` table with `unique (booking_id, type)` ensures each reminder is sent at most once.
+
+Failure handling:
+
+- Queue retries with exponential backoff.
+- After N failures, mark as `failed` in notification log and alert admins.
+
+***
+
+### 6. Time Zone, Localization & i18n
+
+#### 6.1 Principles
+
+- Store **all times** as `TIMESTAMPTZ` (UTC). [phosti](https://phosti.com/gammu)
+- Store time zone IDs in `providers.time_zone`, `users.time_zone` using IANA DB.
+- Frontend:
+  - Use `Intl.DateTimeFormat` & `Temporal` (or `luxon`/`date-fns-tz`) for conversions.
+
+#### 6.2 DST, ambiguous times
+
+- When generating local slots from daily rules:
+
+  1. Convert date + local time to UTC using zone-aware library.
+  2. If result is ambiguous (DST fall-back), choose earliest offset.
+  3. For invalid times (spring forward), skip that slot.
+
+- Never allow UI to construct naive `YYYY-MM-DDTHH:mm` and treat as UTC; always treat as provider-local time zone then convert.
+
+#### 6.3 Localization
+
+- Date formats:
+  - Render per-user `locale` from DB, using `Intl.DateTimeFormat(locale, options)`.
+- Language:
+  - Use i18n frameworks (react-intl, i18next) and store `locale` per user.
+- Regional preferences:
+  - 12h vs 24h controlled by locale or explicit setting.
+
+***
+
+### 7. Deployment, Scaling & Infrastructure
+
+- Docker-compose initial stack:
+  - `app` (Node).
+  - `postgres`.
+  - `redis`.
+  - `postfix`.
+  - `kannel` or `gammu`.
+- For production:
+  - Kubernetes:
+    - Separate deployments: `api`, `worker`, `websocket`, `notifications`.
+    - PostgreSQL via managed service or self-hosted with Patroni for HA.
+- Horizontal scaling:
+  - API is stateless; scale by increasing replicas.
+  - WebSocket servers require sticky sessions (or token-based reconnection).
+- Caching strategies:
+  - Cache **computed availability grids** in Redis keyed by `(providerId, dateRangeHash, viewerTz)`.
+  - Invalidate cache on:
+    - New booking.
+    - Updated availability rule.
+    - Overrides.
+
+***
+
+### 8. Security, Integrity & Abuse Prevention
+
+- Input validation:
+  - Use schema validation (Zod, Joi).
+  - Reject impossible ranges (end before start, > maxFutureDays).
+- Rate limiting:
+  - IP + providerId + eventTypeId; e.g., max 10 booking attempts per hour.
+- Booking abuse:
+  - Require email or phone verification for high-value providers.
+  - Add captchas for public links if abused.
+- Replay attacks:
+  - Action tokens (cancel/reschedule) are short-lived and single-use:
+    - On use, mark as `used` in DB; reject further.
+- Audit logging:
+  - `booking_events` table from above.
+
+***
+
+### 9. Open-Source References & Prior Art
+
+- Self-hosted mail: dockerized Postfix/Mailserver setups. [boredconsultant](https://boredconsultant.com/2022/12/02/A-Dockerized-Self-Hosted-Mail-Server-With-Postfix-And-Dovecot/)
+- SMS gateway: Gammu & Kannel combined. [phosti](https://phosti.com/gammu)
+- WebSocket scaling using Redis Pub/Sub patterns. [leapcell](https://leapcell.io/blog/scaling-websocket-services-with-redis-pub-sub-in-node-js)
+
+***
+
+## Architecture 2 — CQRS/Event-Sourced Scheduler Core (Go or Rust, with Postgres Event Store)
+
+This variant pushes more **temporal correctness** and multi-tenant history, using event sourcing with a read projection.
+
+### 0. High-level shape
+
+- Backend:
+  - Command side: Go microservice `scheduler-cmd` (REST).
+  - Query side: Go microservice `scheduler-query` (GraphQL).
+  - Event store: Postgres `events` table; projections into `availability_view`, `booking_view`.
+- Frontend:
+  - Similar UI as Architecture 1, but queries come from GraphQL query service.
+- Real-time:
+  - Event bus (NATS or Redis streams) for internal events + WebSocket push.
+
+***
+
+### 1. Frontend
+
+Same general UI patterns as Architecture 1; difference is how data is loaded:
+
+- Calendar query:
+
+```graphql
+query Availability($providerId: ID!, $from: DateTime!, $to: DateTime!, $tz: String!) {
+  availability(providerId: $providerId, from: $from, to: $to, viewerTz: $tz) {
+    date
+    slots { startUtc endUtc isAvailable }
+  }
+}
+```
+
+- Booking mutation goes to command-side REST, which emits events and the read side eventually reflects changes.
+
+Eventual consistency UI:
+
+- After booking, UI initially assumes success, but also refetches GraphQL to confirm slot is now taken.
+
+***
+
+### 2. Backend Scheduling Engine
+
+#### 2.1 Event sourcing
+
+Events stored in Postgres:
+
+```sql
+CREATE TABLE events (
+  id BIGSERIAL PRIMARY KEY,
+  aggregate_id UUID NOT NULL,
+  aggregate_type TEXT NOT NULL CHECK (aggregate_type IN ('provider','booking')),
+  type TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  version INT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX idx_events_aggregate_version
+ON events(aggregate_id, version);
+```
+
+Examples:
+
+- `ProviderAvailabilityRuleAdded`
+- `ProviderAvailabilityRuleRemoved`
+- `ProviderBlackoutAdded`
+- `BookingRequested`
+- `BookingConfirmed`
+- `BookingCancelled`
+- `BookingRescheduled`
+
+Command handler logic:
+
+- For each incoming command:
+  1. Load events for aggregate.
+  2. Rebuild aggregate state in memory.
+  3. Validate command (slot free, within rule, etc.).
+  4. Append new event(s) to `events`.
+  5. Publish event to event bus.
+
+#### 2.2 Projections
+
+- `scheduler-query` service listens to events:
+
+  - For each event, update projection tables:
+
+    - `booking_view`:
+      - Denormalized bookings with join-friendly structure.
+    - `availability_view`:
+      - Materialized time-slot availability per provider per day.
+
+- Example projection schema:
+
+```sql
+CREATE TABLE booking_view (
+  id UUID PRIMARY KEY,
+  provider_id UUID NOT NULL,
+  event_type_id UUID NOT NULL,
+  start_ts TIMESTAMPTZ NOT NULL,
+  end_ts TIMESTAMPTZ NOT NULL,
+  status TEXT NOT NULL,
+  version INT NOT NULL,
+  last_event_at TIMESTAMPTZ NOT NULL
+);
+```
+
+Availability view (denormalized per day):
+
+```sql
+CREATE TABLE availability_view (
+  provider_id UUID NOT NULL,
+  date DATE NOT NULL,
+  time_zone TEXT NOT NULL,
+  slots JSONB NOT NULL,
+  PRIMARY KEY (provider_id, date)
+);
+```
+
+- JSON structure:
+
+```json
+[
+  {"start": "2026-02-03T09:00:00Z", "end": "2026-02-03T09:30:00Z", "status": "free"},
+  {"start": "2026-02-03T09:30:00Z", "end": "2026-02-03T10:00:00Z", "status": "booked"},
+  ...
+]
+```
+
+Conflict handling:
+
+- Event sourcing still uses DB constraints at projection or command write for concurrency:
+  - When applying `BookingConfirmed` event, command side attempts to insert into `bookings` with same exclusion constraint as Architecture 1.
+  - If constraint fails, the command rejects with error; event is not written.
+
+#### 2.3 REST/GraphQL APIs
+
+Command API (REST):
+
+```http
+POST /commands/bookings/request
+POST /commands/bookings/confirm
+POST /commands/bookings/cancel
+POST /commands/providers/availability-rules/add
+```
+
+- Each command uses `If-Match` or version in payload to ensure concurrency control.
+
+Query API (GraphQL):
+
+As above for availability, bookings listing, etc.
+
+***
+
+### 3. Database & Temporal Modeling
+
+- Postgres is used for:
+  - Event store (`events`).
+  - Projections (`booking_view`, `availability_view`).
+  - Notification outbox.
+
+Temporal modeling:
+
+- Events always contain UTC timestamps.
+- For queries, `availability_view` precomputes from provider timezone, but also stores canonical UTC.
+
+Indexing:
+
+- Heavy index on `events(aggregate_id, version)` for fast aggregate rebuild.
+- Index on `booking_view(provider_id, start_ts)`.
+
+Pros:
+
+- Immutable audit log.
+- Easy to reconstruct history, debug past behavior (e.g., DST bugs).
+- Replay-friendly for new projections.
+
+Cons:
+
+- Complexity greatly increases; rebuild and compaction needed.
+- Eventual consistency; clients must tolerate small staleness windows.
+
+***
+
+### 4. Real-Time Sync
+
+- Use NATS or Redis streams for intra-service events.
+- Query service replicates events to WebSocket service.
+- WebSocket channels by provider:
+
+  - `provider.{id}.availability_updates`.
+  - `provider.{id}.booking_events`.
+
+Same real-time semantics as Architecture 1, but events originate from event store rather than direct DB writes.
+
+***
+
+### 5. Notifications, Time Zones, Deployment, Security
+
+- Largely same primitives as Architecture 1:
+  - SMTP via Postfix. [github](https://github.com/bokysan/docker-postfix)
+  - SMS via Kannel/Gammu. [phosti](https://phosti.com/gammu)
+  - Timezone via IANA, DST careful conversion. [phosti](https://phosti.com/gammu)
+- Event-driven notifications:
+  - On `BookingConfirmed` event, an outbox record is created.
+  - Notification worker reads outbox, sends email/SMS, then marks as sent.
+
+Outbox pattern:
+
+```sql
+CREATE TABLE notification_outbox (
+  id BIGSERIAL PRIMARY KEY,
+  event_id BIGINT NOT NULL REFERENCES events(id),
+  type TEXT NOT NULL,
+  payload JSONB NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  processed_at TIMESTAMPTZ
+);
+```
+
+Workers poll `status='pending'`.
+
+***
+
+## Architecture 3 — Elixir/Phoenix LiveView, Coarse-Grained Lock Service, and Python Worker Pool
+
+This architecture leverages Elixir’s concurrency for real-time scheduling and LiveView UI, plus Python workers for heavy tasks (like ICS generation or complex notifications).
+
+### 0. High-level shape
+
+- Frontend:
+  - Phoenix LiveView for provider/admin UI and optionally public booking.
+  - React/Vite for embeddable widget.
+- Backend:
+  - Phoenix app (Elixir) for core scheduling.
+  - Python worker (Celery) for notifications and heavy CPU-bound tasks.
+- DB:
+  - Postgres with same constraints.
+- Real-time:
+  - Phoenix Channels + PubSub.
+- Locking:
+  - Distributed lock via Postgres advisory locks or Redis.
+
+***
+
+### 1. Frontend (LiveView & React Widget)
+
+LiveView calendar:
+
+- Server-rendered HTML updates via WebSockets.
+- Pros:
+  - Automatic real-time updates when state changes.
+  - Built-in forms, validation.
+
+Slot picking:
+
+- User clicks slot; LiveView event `handle_event("pick_slot", ...)` on server checks availability immediately and locks slot for short time (optional ephemeral “hold”).
+
+Drag-to-select (providers):
+
+- LiveView receives start/end times, builds rule, persists.
+
+React embeddable widget:
+
+- For external sites, embed `<iframe>` or “script bootstraps React component” pattern.
+- React component communicates with Phoenix JSON endpoints (REST).
+
+Accessibility:
+
+- Same ARIA patterns as Architecture 1.
+
+***
+
+### 2. Backend Engine and Locking Strategy
+
+#### 2.1 Phoenix context modules
+
+- `Booking` context:
+  - Functions: `list_slots/3`, `create_booking/3`, `reschedule_booking/3`, etc.
+- `Availability` context:
+  - Manage rules, overrides.
+
+#### 2.2 Lock service
+
+- Use **Postgres advisory locks** for short-lived slot hold:
+
+Pseudo-code (Elixir):
+
+```elixir
+def with_slot_lock(provider_id, start_ts, end_ts, fun) do
+  key = :erlang.phash2({provider_id, start_ts, end_ts})
+  Repo.transaction(fn ->
+    Repo.query!("SELECT pg_advisory_xact_lock($1)", [key])
+    fun.()
+  end)
+end
+```
+
+Booking creation:
+
+```elixir
+with_slot_lock(provider_id, start_ts, end_ts, fn ->
+  case create_booking_changeset(...) do
+    {:ok, booking} -> Repo.insert(booking)
+    {:error, changeset} -> Repo.rollback(changeset)
+  end
+end)
+```
+
+Combine with DB exclusion constraint for extra safety.
+
+#### 2.3 API design
+
+- LiveView uses internal context functions; external clients use REST/GraphQL same as other architectures.
+
+***
+
+### 3. DB schema
+
+Same as Architecture 1, with Ecto migrations.
+
+***
+
+### 4. Real-Time Sync (Phoenix PubSub & Channels)
+
+- Channels topic: `provider:<id>`.
+
+Flow:
+
+1. Booking created.
+2. After commit, `Booking` context broadcasts:
+
+```elixir
+Phoenix.PubSub.broadcast(MyApp.PubSub, "provider:#{provider.id}", {:booking_created, booking})
+```
+
+3. LiveViews subscribed to `provider:#{id}` receive message in `handle_info`, recalc visible slots.
+
+Real-time external widget:
+
+- Connect via WebSocket to `/socket` and subscribe to provider topics similarly.
+
+***
+
+### 5. Notifications & Python Worker Pool
+
+- Use Python + Celery + Redis:
+
+  - Phoenix publishes job to Redis (or writes to `notification_jobs` DB table).
+  - Celery worker consumes and sends email/SMS.
+  - SMTP via Postfix container (as earlier). [hub.docker](https://hub.docker.com/r/boky/postfix/)
+  - SMS via Kannel/Gammu. [phosti](https://phosti.com/gammu)
+
+Python snippet:
+
+```python
+from celery import Celery
+import smtplib
+
+app = Celery('notifications', broker='redis://redis:6379/0')
+
+@app.task
+def send_booking_confirmation_email(to_email, subject, body):
+    with smtplib.SMTP('postfix', 587) as smtp:
+        smtp.sendmail('noreply@domain', [to_email], body)
+```
+
+***
+
+### 6. Time Zone & i18n
+
+- Elixir:
+  - Use `Timex` or `elixir-calendar` for timezone-aware manipulation.
+- Same IANA/UTC-first principles as Architecture 1. [phosti](https://phosti.com/gammu)
+
+***
+
+### 7. Deployment & Scaling
+
+- Containerization:
+  - Phoenix app in one image.
+  - Python worker in another.
+  - Postgres, Redis, Postfix, Kannel containers as before. [github](https://github.com/bokysan/docker-postfix)
+- Horizontal scaling:
+  - Phoenix nodes cluster-friendly; LiveView sessions pinned via Phoenix Presence.
+- Caching:
+  - ETS in-memory or Redis for precomputed availability per provider/day.
+
+***
+
+### 8. Security & Abuse
+
+- Rate limiting:
+  - Plug-based middlewares counting IP or user.
+- Anti-abuse:
+  - Require email confirmation before finalizing booking (two-step flow).
+- Audit logging:
+  - Logs per booking action in DB similar to `booking_events`.
+
+***
+
+### 9. Open-Source Prior Art
+
+Patterns and components:
+
+- Dockerized self-hosted mail server with Postfix and Dovecot for complex mail setups. [youtube](https://www.youtube.com/watch?v=NhoSOPGk3q0)
+- Docker Postfix relay images (boky/docker-postfix) for lightweight SMTP. [hub.docker](https://hub.docker.com/r/boky/postfix/)
+- Gammu & Kannel as production-grade SMS gateway stack. [phosti](https://phosti.com/gammu)
+- Redis Pub/Sub for WebSocket scaling patterns in Node; conceptually applicable here as well. [dev](https://dev.to/hexshift/scaling-websocket-connections-with-redis-pubsub-for-multi-instance-nodejs-applications-3pib)
+
+***
+
+These three architectures cover: a strong Postgres-centric monolith, an event-sourced CQRS system, and a LiveView-centric real-time system with external workers. Each can be extended with multi-tenancy, marketplace layers, or advanced policies (e.g., round-robin across multiple providers, capacity planning, overbooking). All avoid third-party SaaS booking providers, rely only on self-hostable components, and are built for production-grade concurrency and correctness.

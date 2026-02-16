@@ -1,0 +1,122 @@
+INSERT INTO tenants (id, name, slug)
+VALUES ('11111111-1111-1111-1111-111111111111', 'MatBoss Demo Tenant', 'matboss-demo')
+ON CONFLICT (slug) DO NOTHING;
+
+INSERT INTO users (id, tenant_id, email, password_hash, name, role, time_zone)
+VALUES (
+  '22222222-2222-2222-2222-222222222222',
+  '11111111-1111-1111-1111-111111111111',
+  'admin@matboss.online',
+  COALESCE(
+    NULLIF(current_setting('matboss.admin_password_hash', true), ''),
+    '$2b$10$hD2K9Lhdg4f9ymJv9fVh5Ot8gTGe0rXe3G5UpiRaY1oCbcnZ6FQ4W'
+  ),
+  'MatBoss Admin',
+  'ADMIN',
+  'Europe/Vienna'
+)
+ON CONFLICT (tenant_id, email) DO NOTHING;
+
+INSERT INTO users (id, tenant_id, email, password_hash, name, role, time_zone)
+VALUES (
+  '33333333-3333-3333-3333-333333333333',
+  '11111111-1111-1111-1111-111111111111',
+  'provider@matboss.online',
+  '$2b$10$hD2K9Lhdg4f9ymJv9fVh5Ot8gTGe0rXe3G5UpiRaY1oCbcnZ6FQ4W',
+  'Ammar Alkheder',
+  'PROVIDER',
+  'Europe/Vienna'
+)
+ON CONFLICT (tenant_id, email) DO NOTHING;
+
+INSERT INTO providers (
+  id,
+  tenant_id,
+  user_id,
+  name,
+  bio,
+  specialties,
+  booking_url,
+  time_zone,
+  buffer_before_minutes,
+  buffer_after_minutes,
+  minimum_notice_hours,
+  maximum_advance_days
+)
+VALUES (
+  '44444444-4444-4444-4444-444444444444',
+  '11111111-1111-1111-1111-111111111111',
+  '33333333-3333-3333-3333-333333333333',
+  'Ammar Alkheder',
+  'Founder in Vienna serving U.S. martial arts schools',
+  'Discovery calls, lead qualification, operations',
+  'ammar-vienna',
+  'America/New_York',
+  15,
+  15,
+  24,
+  60
+)
+ON CONFLICT (tenant_id, booking_url) DO NOTHING;
+
+INSERT INTO event_types (
+  id,
+  tenant_id,
+  provider_id,
+  name,
+  slug,
+  kind,
+  duration_minutes,
+  max_attendees,
+  price_cents,
+  color,
+  requires_approval,
+  is_active
+)
+VALUES
+  (
+    '55555555-5555-5555-5555-555555555551',
+    '11111111-1111-1111-1111-111111111111',
+    '44444444-4444-4444-4444-444444444444',
+    '30m Discovery Call',
+    'discovery-30',
+    'ONE_ON_ONE',
+    30,
+    1,
+    0,
+    '#1f7aec',
+    FALSE,
+    TRUE
+  ),
+  (
+    '55555555-5555-5555-5555-555555555552',
+    '11111111-1111-1111-1111-111111111111',
+    '44444444-4444-4444-4444-444444444444',
+    'Group Strategy Session',
+    'group-strategy',
+    'GROUP',
+    60,
+    8,
+    0,
+    '#0ea5a6',
+    TRUE,
+    TRUE
+  )
+ON CONFLICT (provider_id, slug) DO NOTHING;
+
+INSERT INTO availability_rules (
+  tenant_id,
+  provider_id,
+  event_type_id,
+  day_of_week,
+  start_time,
+  end_time,
+  time_zone
+)
+VALUES
+  ('11111111-1111-1111-1111-111111111111', '44444444-4444-4444-4444-444444444444', '55555555-5555-5555-5555-555555555551', 1, '09:00', '17:00', 'America/New_York'),
+  ('11111111-1111-1111-1111-111111111111', '44444444-4444-4444-4444-444444444444', '55555555-5555-5555-5555-555555555551', 2, '09:00', '17:00', 'America/New_York'),
+  ('11111111-1111-1111-1111-111111111111', '44444444-4444-4444-4444-444444444444', '55555555-5555-5555-5555-555555555551', 3, '09:00', '17:00', 'America/New_York'),
+  ('11111111-1111-1111-1111-111111111111', '44444444-4444-4444-4444-444444444444', '55555555-5555-5555-5555-555555555551', 4, '09:00', '17:00', 'America/New_York'),
+  ('11111111-1111-1111-1111-111111111111', '44444444-4444-4444-4444-444444444444', '55555555-5555-5555-5555-555555555551', 5, '09:00', '17:00', 'America/New_York')
+ON CONFLICT DO NOTHING;

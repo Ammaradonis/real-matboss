@@ -1,0 +1,37 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: matboss-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: '946732'
+      POSTGRES_DB: matboss
+    ports:
+      - '5432:5432'
+    volumes:
+      - matboss_pg_data:/var/lib/postgresql/data
+
+  booking-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: matboss-booking-api
+    environment:
+      DATABASE_URL: postgresql://postgres:946732@postgres:5432/matboss
+      JWT_SECRET: dev-access-secret
+      JWT_REFRESH_SECRET: dev-refresh-secret
+      SMTP_HOST: localhost
+      SMTP_PORT: 1025
+      SMTP_FROM: MatBoss <hello@matboss.online>
+      CORS_ORIGINS: https://matboss.online
+      NODE_ENV: development
+      PORT: 3000
+    depends_on:
+      - postgres
+    ports:
+      - '3000:3000'
+
+volumes:
+  matboss_pg_data:
