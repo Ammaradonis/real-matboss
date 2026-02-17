@@ -7,6 +7,28 @@ BEGIN
     ALTER TABLE users ADD COLUMN IF NOT EXISTS name VARCHAR(160);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS role user_role_enum DEFAULT 'MEMBER';
     ALTER TABLE users ADD COLUMN IF NOT EXISTS time_zone VARCHAR(100) DEFAULT 'UTC';
+
+    IF EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'users'
+        AND column_name = 'firstName'
+    ) THEN
+      ALTER TABLE users ALTER COLUMN "firstName" SET DEFAULT '';
+      UPDATE users SET "firstName" = '' WHERE "firstName" IS NULL;
+    END IF;
+
+    IF EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'users'
+        AND column_name = 'lastName'
+    ) THEN
+      ALTER TABLE users ALTER COLUMN "lastName" SET DEFAULT '';
+      UPDATE users SET "lastName" = '' WHERE "lastName" IS NULL;
+    END IF;
   END IF;
 
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'providers') THEN
