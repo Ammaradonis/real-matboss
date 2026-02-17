@@ -2,6 +2,7 @@ DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users') THEN
     ALTER TABLE users ADD COLUMN IF NOT EXISTS tenant_id UUID;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS role user_role_enum DEFAULT 'MEMBER';
     ALTER TABLE users ADD COLUMN IF NOT EXISTS time_zone VARCHAR(100) DEFAULT 'UTC';
   END IF;
