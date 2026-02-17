@@ -1,3 +1,32 @@
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users') THEN
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS tenant_id UUID;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS role user_role_enum DEFAULT 'MEMBER';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS time_zone VARCHAR(100) DEFAULT 'UTC';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'providers') THEN
+    ALTER TABLE providers ADD COLUMN IF NOT EXISTS tenant_id UUID;
+    ALTER TABLE providers ADD COLUMN IF NOT EXISTS booking_url VARCHAR(140);
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'event_types') THEN
+    ALTER TABLE event_types ADD COLUMN IF NOT EXISTS tenant_id UUID;
+    ALTER TABLE event_types ADD COLUMN IF NOT EXISTS slug VARCHAR(140);
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'availability_rules') THEN
+    ALTER TABLE availability_rules ADD COLUMN IF NOT EXISTS tenant_id UUID;
+  END IF;
+END
+$$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tenants_slug_unique ON tenants(slug);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_tenant_email_unique ON users(tenant_id, email);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_providers_tenant_booking_url_unique ON providers(tenant_id, booking_url);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_event_types_provider_slug_unique ON event_types(provider_id, slug);
+
 INSERT INTO tenants (id, name, slug)
 VALUES ('11111111-1111-1111-1111-111111111111', 'MatBoss Demo Tenant', 'matboss-demo')
 ON CONFLICT (slug) DO NOTHING;
