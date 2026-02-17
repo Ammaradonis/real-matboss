@@ -33,7 +33,7 @@ INSERT INTO tenants (id, name, slug)
 VALUES ('11111111-1111-1111-1111-111111111111', 'MatBoss Demo Tenant', 'matboss-demo')
 ON CONFLICT (slug) DO NOTHING;
 
-INSERT INTO users (id, tenant_id, email, password_hash, name, role, time_zone)
+INSERT INTO users (id, tenant_id, email, password_hash, name, time_zone)
 VALUES (
   '22222222-2222-2222-2222-222222222222',
   '11111111-1111-1111-1111-111111111111',
@@ -43,22 +43,75 @@ VALUES (
     '$2b$10$hD2K9Lhdg4f9ymJv9fVh5Ot8gTGe0rXe3G5UpiRaY1oCbcnZ6FQ4W'
   ),
   'MatBoss Admin',
-  'ADMIN',
   'Europe/Vienna'
 )
 ON CONFLICT (tenant_id, email) DO NOTHING;
 
-INSERT INTO users (id, tenant_id, email, password_hash, name, role, time_zone)
+INSERT INTO users (id, tenant_id, email, password_hash, name, time_zone)
 VALUES (
   '33333333-3333-3333-3333-333333333333',
   '11111111-1111-1111-1111-111111111111',
   'provider@matboss.online',
   '$2b$10$hD2K9Lhdg4f9ymJv9fVh5Ot8gTGe0rXe3G5UpiRaY1oCbcnZ6FQ4W',
   'Ammar Alkheder',
-  'PROVIDER',
   'Europe/Vienna'
 )
 ON CONFLICT (tenant_id, email) DO NOTHING;
+
+DO $$
+DECLARE
+  role_type TEXT;
+  admin_label TEXT;
+  provider_label TEXT;
+BEGIN
+  SELECT c.udt_name
+  INTO role_type
+  FROM information_schema.columns c
+  WHERE c.table_schema = 'public'
+    AND c.table_name = 'users'
+    AND c.column_name = 'role';
+
+  IF role_type IS NULL THEN
+    RETURN;
+  END IF;
+
+  SELECT e.enumlabel
+  INTO admin_label
+  FROM pg_type t
+  JOIN pg_enum e ON e.enumtypid = t.oid
+  WHERE t.typname = role_type
+    AND e.enumlabel IN ('ADMIN', 'admin')
+  ORDER BY CASE WHEN e.enumlabel = 'ADMIN' THEN 0 ELSE 1 END
+  LIMIT 1;
+
+  SELECT e.enumlabel
+  INTO provider_label
+  FROM pg_type t
+  JOIN pg_enum e ON e.enumtypid = t.oid
+  WHERE t.typname = role_type
+    AND e.enumlabel IN ('PROVIDER', 'provider')
+  ORDER BY CASE WHEN e.enumlabel = 'PROVIDER' THEN 0 ELSE 1 END
+  LIMIT 1;
+
+  IF admin_label IS NOT NULL THEN
+    EXECUTE format(
+      'UPDATE users SET role = %L::%I WHERE id = %L',
+      admin_label,
+      role_type,
+      '22222222-2222-2222-2222-222222222222'
+    );
+  END IF;
+
+  IF provider_label IS NOT NULL THEN
+    EXECUTE format(
+      'UPDATE users SET role = %L::%I WHERE id = %L',
+      provider_label,
+      role_type,
+      '33333333-3333-3333-3333-333333333333'
+    );
+  END IF;
+END
+$$;
 
 INSERT INTO providers (
   id,
