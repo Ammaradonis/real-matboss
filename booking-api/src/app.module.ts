@@ -24,8 +24,8 @@ import { SanitizeInterceptor } from './shared/sanitize.interceptor';
       url:
         process.env.DATABASE_URL ??
         'postgresql://postgres:946732@localhost:5432/matboss',
-      retryAttempts: 5,
-      retryDelay: 2000,
+      retryAttempts: 10,
+      retryDelay: 3000,
       autoLoadEntities: true,
       entities: ENTITIES,
       synchronize: false,

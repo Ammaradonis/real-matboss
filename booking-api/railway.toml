@@ -1,15 +1,9 @@
 [build]
-builder = "NIXPACKS"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
 
 [deploy]
 numReplicas = 1
 restartPolicyType = "ON_FAILURE"
-startCommand = "node scripts/migrate.js && node dist/main.js"
 healthcheckPath = "/api/v1/health"
 healthcheckTimeout = 180
-
-[env]
-NODE_ENV = "production"
-PORT = "3000"
-CORS_ORIGINS = "https://matboss.online"
-SMTP_HOST = "localhost"
