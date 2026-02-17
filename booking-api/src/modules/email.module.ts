@@ -1,11 +1,13 @@
 import {
   Body,
   Controller,
+  Injectable,
   Get,
   Module,
   Param,
   Patch,
   Post,
+  Put,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -333,6 +335,7 @@ class EmailController {
   }
 }
 
+@Injectable()
 class EmailQueueProcessor {
   constructor(
     @InjectRepository(EmailQueueEntity)
