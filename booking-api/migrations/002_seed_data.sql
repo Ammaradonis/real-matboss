@@ -2,6 +2,7 @@ DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users') THEN
     ALTER TABLE users ADD COLUMN IF NOT EXISTS tenant_id UUID;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS password VARCHAR(255);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS name VARCHAR(160);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS role user_role_enum DEFAULT 'MEMBER';
@@ -33,11 +34,15 @@ INSERT INTO tenants (id, name, slug)
 VALUES ('11111111-1111-1111-1111-111111111111', 'MatBoss Demo Tenant', 'matboss-demo')
 ON CONFLICT (slug) DO NOTHING;
 
-INSERT INTO users (id, tenant_id, email, password_hash, name, time_zone)
+INSERT INTO users (id, tenant_id, email, password, password_hash, name, time_zone)
 VALUES (
   '22222222-2222-2222-2222-222222222222',
   '11111111-1111-1111-1111-111111111111',
   'admin@matboss.online',
+  COALESCE(
+    NULLIF(current_setting('matboss.admin_password_hash', true), ''),
+    '$2b$10$hD2K9Lhdg4f9ymJv9fVh5Ot8gTGe0rXe3G5UpiRaY1oCbcnZ6FQ4W'
+  ),
   COALESCE(
     NULLIF(current_setting('matboss.admin_password_hash', true), ''),
     '$2b$10$hD2K9Lhdg4f9ymJv9fVh5Ot8gTGe0rXe3G5UpiRaY1oCbcnZ6FQ4W'
@@ -47,11 +52,12 @@ VALUES (
 )
 ON CONFLICT (tenant_id, email) DO NOTHING;
 
-INSERT INTO users (id, tenant_id, email, password_hash, name, time_zone)
+INSERT INTO users (id, tenant_id, email, password, password_hash, name, time_zone)
 VALUES (
   '33333333-3333-3333-3333-333333333333',
   '11111111-1111-1111-1111-111111111111',
   'provider@matboss.online',
+  '$2b$10$hD2K9Lhdg4f9ymJv9fVh5Ot8gTGe0rXe3G5UpiRaY1oCbcnZ6FQ4W',
   '$2b$10$hD2K9Lhdg4f9ymJv9fVh5Ot8gTGe0rXe3G5UpiRaY1oCbcnZ6FQ4W',
   'Ammar Alkheder',
   'Europe/Vienna'
