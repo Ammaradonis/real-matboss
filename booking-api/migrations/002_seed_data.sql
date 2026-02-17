@@ -29,6 +29,28 @@ BEGIN
       ALTER TABLE users ALTER COLUMN "lastName" SET DEFAULT '';
       UPDATE users SET "lastName" = '' WHERE "lastName" IS NULL;
     END IF;
+
+    IF EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'users'
+        AND column_name = 'createdAt'
+    ) THEN
+      ALTER TABLE users ALTER COLUMN "createdAt" SET DEFAULT NOW();
+      UPDATE users SET "createdAt" = NOW() WHERE "createdAt" IS NULL;
+    END IF;
+
+    IF EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'users'
+        AND column_name = 'updatedAt'
+    ) THEN
+      ALTER TABLE users ALTER COLUMN "updatedAt" SET DEFAULT NOW();
+      UPDATE users SET "updatedAt" = NOW() WHERE "updatedAt" IS NULL;
+    END IF;
   END IF;
 
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'providers') THEN
