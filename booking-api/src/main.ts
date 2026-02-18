@@ -2,6 +2,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import compression from 'compression';
+import { Request, Response } from 'express';
 import helmet from 'helmet';
 
 import { AppModule } from './app.module';
@@ -10,6 +11,12 @@ import { SanitizeInterceptor } from './shared/sanitize.interceptor';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
+  const expressApp = app.getHttpAdapter().getInstance();
+
+  // Railway health endpoint: bypass Nest guards/interceptors/DB checks and always return 200.
+  expressApp.get('/api/v1/healthz', (_req: Request, res: Response) => {
+    res.status(200).json({ status: 'ok', service: 'booking-api', probe: 'railway' });
+  });
 
   app.setGlobalPrefix('api/v1');
   app.use(helmet());
