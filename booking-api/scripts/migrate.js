@@ -5,6 +5,22 @@ const { Pool } = require('pg');
 
 const DB_CONNECT_RETRIES = Number(process.env.DB_CONNECT_RETRIES ?? 30);
 const DB_CONNECT_RETRY_DELAY_MS = Number(process.env.DB_CONNECT_RETRY_DELAY_MS ?? 3000);
+const MIGRATE_FORCE_ALL = /^(1|true|yes)$/i.test(
+  String(process.env.MIGRATE_FORCE_ALL ?? ''),
+);
+const REQUIRED_TABLES = [
+  'tenants',
+  'users',
+  'providers',
+  'event_types',
+  'availability_rules',
+  'bookings',
+  'discovery_calls',
+  'admin_settings',
+  'email_templates',
+  'email_queue',
+  'blackout_dates',
+];
 
 const pool = new Pool({
   connectionString:
@@ -46,6 +62,26 @@ async function ensureTrackingTable() {
   `);
 }
 
+async function isSchemaComplete() {
+  const result = await pool.query(
+    `
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_name = ANY($1::text[])
+    `,
+    [REQUIRED_TABLES],
+  );
+
+  const existing = new Set(result.rows.map((row) => row.table_name));
+  const missing = REQUIRED_TABLES.filter((tableName) => !existing.has(tableName));
+
+  return {
+    complete: missing.length === 0,
+    missing,
+  };
+}
+
 async function migrate() {
   await waitForDatabase();
 
@@ -57,11 +93,26 @@ async function migrate() {
 
   await ensureTrackingTable();
 
+  let forceAll = MIGRATE_FORCE_ALL;
+  const schemaStatus = await isSchemaComplete();
+  if (!schemaStatus.complete && !forceAll) {
+    forceAll = true;
+    console.log(
+      `Schema is incomplete (missing: ${schemaStatus.missing.join(
+        ', ',
+      )}). Reapplying all idempotent migrations.`,
+    );
+  }
+
   for (const file of files) {
     const already = await pool.query('SELECT 1 FROM _migrations WHERE name = $1', [file]);
-    if (already.rowCount) {
+    if (already.rowCount && !forceAll) {
       console.log(`Skipping ${file}`);
       continue;
+    }
+
+    if (already.rowCount && forceAll) {
+      console.log(`Reapplying ${file} (forced mode).`);
     }
 
     const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
@@ -70,7 +121,15 @@ async function migrate() {
     try {
       await client.query('BEGIN');
       await client.query(sql);
-      await client.query('INSERT INTO _migrations(name) VALUES($1)', [file]);
+      await client.query(
+        `
+          INSERT INTO _migrations(name, applied_at)
+          VALUES($1, NOW())
+          ON CONFLICT (name)
+          DO UPDATE SET applied_at = EXCLUDED.applied_at
+        `,
+        [file],
+      );
       await client.query('COMMIT');
       console.log(`Applied ${file}`);
     } catch (error) {
@@ -80,6 +139,15 @@ async function migrate() {
     } finally {
       client.release();
     }
+  }
+
+  const finalStatus = await isSchemaComplete();
+  if (!finalStatus.complete) {
+    throw new Error(
+      `Schema is still incomplete after migrations. Missing tables: ${finalStatus.missing.join(
+        ', ',
+      )}`,
+    );
   }
 }
 
