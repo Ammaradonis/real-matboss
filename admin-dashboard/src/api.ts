@@ -9,10 +9,30 @@ import type {
   Provider,
 } from './types';
 
-const API_BASE = (import.meta.env.VITE_API_URL ?? 'http://localhost:3000').replace(/\/$/, '');
+type RuntimeConfig = {
+  VITE_API_URL?: string;
+  VITE_TENANT_ID?: string;
+};
+
+function getRuntimeConfig(): RuntimeConfig {
+  if (typeof window === 'undefined') {
+    return {};
+  }
+
+  return (window as Window & { __RUNTIME_CONFIG__?: RuntimeConfig }).__RUNTIME_CONFIG__ ?? {};
+}
+
+const runtimeConfig = getRuntimeConfig();
+const API_BASE = (
+  runtimeConfig.VITE_API_URL ??
+  import.meta.env.VITE_API_URL ??
+  'http://localhost:3000'
+).replace(/\/$/, '');
 const API_ROOT = `${API_BASE}/api/v1`;
 const DEFAULT_TENANT_ID =
-  import.meta.env.VITE_TENANT_ID ?? '11111111-1111-1111-1111-111111111111';
+  runtimeConfig.VITE_TENANT_ID ??
+  import.meta.env.VITE_TENANT_ID ??
+  '11111111-1111-1111-1111-111111111111';
 
 interface RequestOptions {
   token?: string;
