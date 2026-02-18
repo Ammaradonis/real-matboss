@@ -37,7 +37,7 @@
             </div>
           </div>
         </div>
-        <input data-split-range type="range" min="5" max="95" value="50" style="margin-top:.8rem;width:100%" />
+        <input data-split-range type="range" min="5" max="95" value="50" aria-label="Before and after revenue comparison slider" style="margin-top:.8rem;width:100%" />
       </article>
 
       <article class="panel">
@@ -45,19 +45,19 @@
         <p class="lead">Model your monthly upside from response-time compression and lead rescue.</p>
 
         <div class="range-row"><label>Leads/month</label><output>120</output></div>
-        <input data-roi-input type="range" min="20" max="800" value="120" name="leads" />
+        <input data-roi-input type="range" min="20" max="800" value="120" name="leads" aria-label="Leads per month slider" />
 
         <div class="range-row"><label>Show rate %</label><output>58</output></div>
-        <input data-roi-input type="range" min="10" max="95" value="58" name="showRate" />
+        <input data-roi-input type="range" min="10" max="95" value="58" name="showRate" aria-label="Show rate percentage slider" />
 
         <div class="range-row"><label>Close rate %</label><output>31</output></div>
-        <input data-roi-input type="range" min="5" max="80" value="31" name="closeRate" />
+        <input data-roi-input type="range" min="5" max="80" value="31" name="closeRate" aria-label="Close rate percentage slider" />
 
         <div class="range-row"><label>Average deal value ($)</label><output>790</output></div>
-        <input data-roi-input type="range" min="80" max="3000" value="790" name="avgValue" />
+        <input data-roi-input type="range" min="80" max="3000" value="790" name="avgValue" aria-label="Average deal value slider" />
 
         <div class="range-row"><label>Delay-attributed loss %</label><output>35</output></div>
-        <input data-roi-input type="range" min="5" max="80" value="35" name="delayLoss" />
+        <input data-roi-input type="range" min="5" max="80" value="35" name="delayLoss" aria-label="Delay-attributed loss percentage slider" />
 
         <h3 style="margin:.8rem 0 0;font-size:1.8rem;color:var(--win)" data-roi-output>$0</h3>
         <p class="footer-note" data-roi-breakdown></p>

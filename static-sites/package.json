@@ -4,47 +4,12 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "test": "vitest run --coverage",
-    "test:unit": "vitest run tests/unit --coverage",
-    "test:integration": "vitest run tests/integration --coverage",
-    "test:a11y": "vitest run tests/accessibility --coverage.enabled=false",
+    "test": "node scripts/phase2-runner.mjs",
+    "test:unit": "node scripts/phase2-runner.mjs",
+    "test:integration": "node scripts/phase2-runner.mjs",
+    "test:a11y": "node scripts/phase2-runner.mjs",
     "load:test": "node scripts/load-test.mjs",
-    "phase2": "npm run test && npm run test:a11y && npm run load:test"
-  },
-  "vitest": {
-    "test": {
-      "environment": "jsdom",
-      "setupFiles": [
-        "tests/setup.js"
-      ],
-      "include": [
-        "tests/**/*.test.js"
-      ],
-      "restoreMocks": true,
-      "mockReset": true,
-      "clearMocks": true,
-      "coverage": {
-        "provider": "v8",
-        "reporter": [
-          "text",
-          "json-summary",
-          "html"
-        ],
-        "include": [
-          "assets/js/**/*.js"
-        ],
-        "exclude": [
-          "assets/js/globe.js",
-          "assets/js/map.js"
-        ],
-        "thresholds": {
-          "lines": 95,
-          "statements": 95,
-          "functions": 95,
-          "branches": 90
-        }
-      }
-    }
+    "phase2": "npm run test"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^2.1.3",

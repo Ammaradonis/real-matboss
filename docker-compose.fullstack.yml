@@ -1,0 +1,75 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: '946732'
+      POSTGRES_DB: matboss
+    ports:
+      - '5432:5432'
+    volumes:
+      - matboss_pg_data:/var/lib/postgresql/data
+
+  booking-api:
+    build:
+      context: ./booking-api
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres:946732@postgres:5432/matboss
+      JWT_SECRET: dev-access-secret
+      JWT_REFRESH_SECRET: dev-refresh-secret
+      SMTP_HOST: localhost
+      SMTP_PORT: 1025
+      SMTP_FROM: MatBoss <hello@matboss.online>
+      CORS_ORIGINS: http://localhost:8080,http://localhost:5173,http://localhost:5174,http://localhost:5175
+      NODE_ENV: development
+      PORT: 3000
+    depends_on:
+      - postgres
+    ports:
+      - '3000:3000'
+
+  booking-ui:
+    build:
+      context: ./booking-ui
+      dockerfile: Dockerfile
+    environment:
+      VITE_API_URL: http://localhost:3000
+    ports:
+      - '5173:80'
+
+  admin-dashboard:
+    build:
+      context: ./admin-dashboard
+      dockerfile: Dockerfile
+    environment:
+      VITE_API_URL: http://localhost:3000
+      VITE_TENANT_ID: DEMO_TENANT_ID
+    ports:
+      - '5174:80'
+
+  static-sites:
+    build:
+      context: ./static-sites
+      dockerfile: Dockerfile
+    ports:
+      - '5175:80'
+
+  nginx-proxy:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+      args:
+        NGINX_CONF: production.conf
+    depends_on:
+      - static-sites
+      - booking-ui
+      - admin-dashboard
+      - booking-api
+    ports:
+      - '8080:80'
+
+volumes:
+  matboss_pg_data:
