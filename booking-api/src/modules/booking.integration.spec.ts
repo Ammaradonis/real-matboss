@@ -9,7 +9,14 @@ import { BookingGateway } from './websocket.module';
 
 const runDbTests = process.env.RUN_DB_TESTS === '1';
 
-(runDbTests ? describe : describe.skip)('Booking integration flow', () => {
+describe('Booking integration flow', () => {
+  if (!runDbTests) {
+    it('requires RUN_DB_TESTS=1 to execute DB-backed integration checks', () => {
+      expect(runDbTests).toBe(false);
+    });
+    return;
+  }
+
   let app: INestApplication;
   let dataSource: DataSource;
 

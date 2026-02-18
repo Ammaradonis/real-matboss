@@ -60,6 +60,16 @@ export interface AnalyticsResponse {
   todayCalls: number;
   leadFunnel: Array<{ status: string; count: string }>;
   topStates: Array<{ state: string; count: string }>;
+  monthComparison: {
+    thisMonth: number;
+    lastMonth: number;
+    deltaPercent: number | null;
+  };
+  weeklyTrend: Array<{ weekStart: string; count: string }>;
+  budgetBreakdown: Array<{ label: string; count: string }>;
+  timelineBreakdown: Array<{ label: string; count: string }>;
+  systemBreakdown: Array<{ label: string; count: string }>;
+  emailStats: Record<string, number>;
 }
 
 export interface AdminSetting {

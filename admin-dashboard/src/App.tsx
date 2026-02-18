@@ -1,6 +1,15 @@
 import { format } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 import {
   addBlackoutDate,
@@ -14,7 +23,10 @@ import {
   getEmailTemplates,
   getProviders,
   getSettings,
+  previewEmailTemplate,
   setLeadFollowUp,
+  testSendEmail,
+  updateEmailTemplate,
   updateLeadStatus,
   upsertSetting,
 } from './api';
@@ -34,28 +46,78 @@ import type {
 const VIENNA_TZ = 'Europe/Vienna';
 
 const LEAD_COLUMNS: Array<{ label: string; key: LeadStatus }> = [
-  { label: 'New', key: 'new' },
-  { label: 'Contacted', key: 'contacted' },
-  { label: 'Qualified', key: 'qualified' },
-  { label: 'Proposal', key: 'proposal' },
-  { label: 'Closed Won', key: 'closed_won' },
+  { label: 'New Recruits', key: 'new' },
+  { label: 'Contacted Allies', key: 'contacted' },
+  { label: 'Qualified Warriors', key: 'qualified' },
+  { label: 'Proposal Battles', key: 'proposal' },
+  { label: 'Closed Won Victories', key: 'closed_won' },
   { label: 'Closed Lost', key: 'closed_lost' },
 ];
 
 type TabKey = 'dashboard' | 'bookings' | 'leads' | 'emails' | 'settings';
+type EmailTabKey = 'templates' | 'queue' | 'blackout';
+type QueueFilter = 'all' | 'PENDING' | 'SENT' | 'FAILED';
 
 interface SettingsState {
   providerId: string;
   defaultDurationMinutes: number;
-  followUpWindowHours: number;
+  minimumNoticeHours: number;
+  maximumAdvanceDays: number;
+  bufferMinutes: number;
+  adminTimezone: string;
   enforce2fa: boolean;
   rotationDays: number;
 }
 
+function numericRows(rows: Array<{ label: string; count: string }>): Array<{ label: string; count: number }> {
+  return rows.map((row) => ({ label: row.label, count: Number.parseInt(row.count, 10) || 0 }));
+}
+
+function toNumber(value: string): number {
+  return Number.parseInt(value, 10) || 0;
+}
+
+function DashboardBarChart({
+  title,
+  data,
+  color,
+}: {
+  title: string;
+  data: Array<{ label: string; count: number }>;
+  color: string;
+}) {
+  return (
+    <article className="panel">
+      <h3 className="text-lg font-semibold">{title}</h3>
+      <div className="mt-3 h-56">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+            <XAxis dataKey="label" tick={{ fill: '#cdd7e3', fontSize: 11 }} />
+            <YAxis tick={{ fill: '#cdd7e3', fontSize: 11 }} />
+            <Tooltip
+              contentStyle={{
+                background: '#142033',
+                border: '1px solid rgba(255,255,255,0.15)',
+                borderRadius: '0.75rem',
+              }}
+            />
+            <Bar dataKey="count" fill={color} radius={[8, 8, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </article>
+  );
+}
+
 function App() {
   const { token, isAuthenticated, login, logout } = useAuth();
+
   const [activeTab, setActiveTab] = useState<TabKey>('dashboard');
-  const [error, setError] = useState<string>('');
+  const [emailTab, setEmailTab] = useState<EmailTabKey>('templates');
+  const [queueFilter, setQueueFilter] = useState<QueueFilter>('all');
+
+  const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -68,7 +130,12 @@ function App() {
 
   const [leadSearch, setLeadSearch] = useState('');
   const [leadFilter, setLeadFilter] = useState<LeadStatus | 'all'>('all');
+  const [bookingSearch, setBookingSearch] = useState('');
+  const [bookingStatus, setBookingStatus] = useState<'all' | 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'NO_SHOW'>('all');
+
   const [selectedLead, setSelectedLead] = useState<DiscoveryLead | null>(null);
+  const [modalLeadStatus, setModalLeadStatus] = useState<LeadStatus>('new');
+  const [modalNote, setModalNote] = useState('');
 
   const [templateForm, setTemplateForm] = useState({
     key: 'discovery-follow-up',
@@ -76,8 +143,11 @@ function App() {
     category: 'discovery',
     subject: 'Your MatBoss Discovery Call Follow-Up',
     htmlBody: '<p>Hi {{booking.customerName}}, thanks for speaking with MatBoss.</p>',
+    textBody: 'Hi {{booking.customerName}}, thanks for speaking with MatBoss.',
     variables: 'booking.customerName,booking.startTs',
   });
+  const [templatePreview, setTemplatePreview] = useState('');
+  const [templateTestEmail, setTemplateTestEmail] = useState('');
 
   const [queueForm, setQueueForm] = useState({
     to: '',
@@ -95,7 +165,10 @@ function App() {
   const [settingsForm, setSettingsForm] = useState<SettingsState>({
     providerId: '',
     defaultDurationMinutes: 30,
-    followUpWindowHours: 24,
+    minimumNoticeHours: 2,
+    maximumAdvanceDays: 60,
+    bufferMinutes: 10,
+    adminTimezone: 'America/New_York',
     enforce2fa: false,
     rotationDays: 90,
   });
@@ -106,16 +179,11 @@ function App() {
     if (!token) {
       return;
     }
+
     const data = await getProviders(token);
     setProviders(data);
-    setBlackoutForm((prev) => ({
-      ...prev,
-      providerId: prev.providerId || data[0]?.id || '',
-    }));
-    setSettingsForm((prev) => ({
-      ...prev,
-      providerId: prev.providerId || data[0]?.id || '',
-    }));
+    setBlackoutForm((prev) => ({ ...prev, providerId: prev.providerId || data[0]?.id || '' }));
+    setSettingsForm((prev) => ({ ...prev, providerId: prev.providerId || data[0]?.id || '' }));
   }, [token]);
 
   const loadAnalytics = useCallback(async () => {
@@ -154,13 +222,17 @@ function App() {
     }
     const rows = await getSettings(token);
     setSettings(rows);
+
     const callConfig = rows.find((item) => item.key === 'call_config')?.value;
     const security = rows.find((item) => item.key === 'security_password_policy')?.value;
 
     setSettingsForm((prev) => ({
       providerId: String(callConfig?.providerId ?? prev.providerId),
       defaultDurationMinutes: Number(callConfig?.defaultDurationMinutes ?? prev.defaultDurationMinutes),
-      followUpWindowHours: Number(callConfig?.followUpWindowHours ?? prev.followUpWindowHours),
+      minimumNoticeHours: Number(callConfig?.minimumNoticeHours ?? prev.minimumNoticeHours),
+      maximumAdvanceDays: Number(callConfig?.maximumAdvanceDays ?? prev.maximumAdvanceDays),
+      bufferMinutes: Number(callConfig?.bufferMinutes ?? prev.bufferMinutes),
+      adminTimezone: String(callConfig?.adminTimezone ?? prev.adminTimezone),
       enforce2fa: Boolean(security?.enforce2fa ?? prev.enforce2fa),
       rotationDays: Number(security?.rotationDays ?? prev.rotationDays),
     }));
@@ -170,7 +242,6 @@ function App() {
     if (!token) {
       return;
     }
-
     setIsLoading(true);
     setError('');
     try {
@@ -189,9 +260,41 @@ function App() {
 
   useAdminRealtime(providerIds, handleRealtimeEvent);
 
+  useEffect(() => {
+    if (token) {
+      void loadAll();
+    }
+  }, [token, loadAll]);
+
+  useEffect(() => {
+    if (selectedLead) {
+      setModalLeadStatus(selectedLead.leadStatus);
+      setModalNote(selectedLead.adminNotes ?? '');
+    }
+  }, [selectedLead]);
+
   const bookingsRows = useMemo(
-    () => leads.filter((lead) => lead.booking).map((lead) => ({ lead, booking: lead.booking! })),
-    [leads],
+    () =>
+      leads
+        .filter((lead) => lead.booking)
+        .filter((lead) => {
+          const booking = lead.booking!;
+          if (bookingStatus !== 'all' && booking.status !== bookingStatus) {
+            return false;
+          }
+          const q = bookingSearch.trim().toLowerCase();
+          if (!q) {
+            return true;
+          }
+          return (
+            lead.schoolName.toLowerCase().includes(q) ||
+            booking.customerName.toLowerCase().includes(q) ||
+            booking.customerEmail.toLowerCase().includes(q) ||
+            `${lead.city} ${lead.state}`.toLowerCase().includes(q)
+          );
+        })
+        .map((lead) => ({ lead, booking: lead.booking! })),
+    [bookingSearch, bookingStatus, leads],
   );
 
   const groupedLeads = useMemo(() => {
@@ -211,11 +314,60 @@ function App() {
     );
   }, [leads]);
 
-  useEffect(() => {
-    if (token) {
-      void loadAll();
+  const statsCards = useMemo(() => {
+    if (!analytics) {
+      return [];
     }
-  }, [token]);
+    const avgStudents =
+      leads.length > 0 ? Math.round(leads.reduce((sum, lead) => sum + lead.activeStudents, 0) / leads.length) : 0;
+
+    return [
+      { label: 'Total Bookings', value: analytics.totalBookings },
+      { label: 'Confirmed', value: analytics.confirmed },
+      { label: 'Pending', value: analytics.pending },
+      { label: 'Avg Students', value: avgStudents },
+      { label: 'Conversion Rate', value: `${analytics.conversionRate}%` },
+      { label: 'This Month', value: analytics.monthComparison.thisMonth },
+      { label: 'Emails Sent', value: analytics.emailStats.sent ?? 0 },
+      { label: 'Total Leads', value: leads.length },
+    ];
+  }, [analytics, leads]);
+
+  const leadFunnelData = useMemo(
+    () => (analytics ? analytics.leadFunnel.map((row) => ({ label: row.status, count: toNumber(row.count) })) : []),
+    [analytics],
+  );
+
+  const weeklyTrendData = useMemo(
+    () =>
+      analytics
+        ? analytics.weeklyTrend.map((row) => ({
+            label: row.weekStart.slice(5),
+            count: toNumber(row.count),
+          }))
+        : [],
+    [analytics],
+  );
+
+  const budgetData = useMemo(
+    () => (analytics ? numericRows(analytics.budgetBreakdown).slice(0, 8) : []),
+    [analytics],
+  );
+
+  const timelineData = useMemo(
+    () => (analytics ? numericRows(analytics.timelineBreakdown).slice(0, 8) : []),
+    [analytics],
+  );
+
+  const systemData = useMemo(
+    () => (analytics ? numericRows(analytics.systemBreakdown).slice(0, 8) : []),
+    [analytics],
+  );
+
+  const filteredQueue = useMemo(
+    () => (queueFilter === 'all' ? queue : queue.filter((item) => item.status === queueFilter)),
+    [queue, queueFilter],
+  );
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -234,17 +386,12 @@ function App() {
     }
   };
 
-  const handleRefresh = async () => {
-    await loadAll();
-  };
-
-  const moveLeadStatus = async (discoveryId: string, leadStatus: LeadStatus) => {
+  const moveLeadStatus = async (discoveryId: string, leadStatus: LeadStatus, note?: string) => {
     if (!token) {
       return;
     }
-
     try {
-      await updateLeadStatus(token, { discoveryId, leadStatus });
+      await updateLeadStatus(token, { discoveryId, leadStatus, note });
       await Promise.all([loadLeads(), loadAnalytics()]);
     } catch (leadError) {
       setError(leadError instanceof Error ? leadError.message : 'Lead update failed');
@@ -295,6 +442,7 @@ function App() {
         category: templateForm.category,
         subject: templateForm.subject,
         htmlBody: templateForm.htmlBody,
+        textBody: templateForm.textBody,
         variables: templateForm.variables
           .split(',')
           .map((value) => value.trim())
@@ -303,6 +451,54 @@ function App() {
       await loadEmails();
     } catch (templateError) {
       setError(templateError instanceof Error ? templateError.message : 'Template creation failed');
+    }
+  };
+
+  const handleTemplatePreview = async () => {
+    if (!token) {
+      return;
+    }
+    try {
+      const payload = await previewEmailTemplate(token, {
+        htmlBody: templateForm.htmlBody,
+        variables: {
+          booking: {
+            customerName: 'Sample Owner',
+            startTs: new Date().toISOString(),
+          },
+        },
+      });
+      setTemplatePreview(payload.html);
+    } catch (previewError) {
+      setError(previewError instanceof Error ? previewError.message : 'Template preview failed');
+    }
+  };
+
+  const handleTemplateTestSend = async () => {
+    if (!token || !templateTestEmail) {
+      return;
+    }
+    try {
+      await testSendEmail(token, {
+        to: templateTestEmail,
+        subject: templateForm.subject,
+        htmlBody: templateForm.htmlBody,
+      });
+      setError('');
+    } catch (testError) {
+      setError(testError instanceof Error ? testError.message : 'Test send failed');
+    }
+  };
+
+  const handleTemplateToggle = async (template: EmailTemplate) => {
+    if (!token) {
+      return;
+    }
+    try {
+      await updateEmailTemplate(token, template.id, { isActive: !template.isActive });
+      await loadEmails();
+    } catch (toggleError) {
+      setError(toggleError instanceof Error ? toggleError.message : 'Template update failed');
     }
   };
 
@@ -348,7 +544,10 @@ function App() {
         upsertSetting(token, 'call_config', {
           providerId: settingsForm.providerId,
           defaultDurationMinutes: settingsForm.defaultDurationMinutes,
-          followUpWindowHours: settingsForm.followUpWindowHours,
+          minimumNoticeHours: settingsForm.minimumNoticeHours,
+          maximumAdvanceDays: settingsForm.maximumAdvanceDays,
+          bufferMinutes: settingsForm.bufferMinutes,
+          adminTimezone: settingsForm.adminTimezone,
         }),
         upsertSetting(token, 'security_password_policy', {
           enforce2fa: settingsForm.enforce2fa,
@@ -359,6 +558,11 @@ function App() {
     } catch (settingsError) {
       setError(settingsError instanceof Error ? settingsError.message : 'Settings save failed');
     }
+  };
+
+  const handlePasswordChange = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setError('Password change endpoint is not available in the current backend build.');
   };
 
   if (!isAuthenticated) {
@@ -377,7 +581,7 @@ function App() {
               </label>
               <label className="field">
                 <span>Password</span>
-                <input name="password" type="password" required minLength={8} placeholder="••••••••" />
+                <input name="password" type="password" required minLength={8} placeholder="********" />
               </label>
             </div>
 
@@ -414,11 +618,11 @@ function App() {
               <p className="text-xs uppercase tracking-[0.32em] text-admin-mint">Vienna-aligned operations</p>
               <h1 className="mt-2 text-2xl font-semibold">MatBoss Admin Dashboard</h1>
               <p className="mt-1 text-sm text-slate-300">
-                Live view uses {VIENNA_TZ} for call center reporting and timezone-safe booking ops.
+                Live view uses {VIENNA_TZ} for reporting and timezone-safe booking operations.
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <button type="button" className="btn-secondary" onClick={handleRefresh}>
+              <button type="button" className="btn-secondary" onClick={() => void loadAll()}>
                 Refresh
               </button>
               <button type="button" className="btn-secondary" onClick={logout}>
@@ -440,90 +644,118 @@ function App() {
         {isLoading ? <p className="mb-5 text-sm text-slate-300">Loading dashboard data...</p> : null}
 
         {activeTab === 'dashboard' && analytics ? (
-          <section className="grid gap-4 lg:grid-cols-4">
-            <article className="panel">
-              <p className="panel-label">Total Bookings</p>
-              <p className="panel-value">{analytics.totalBookings}</p>
-            </article>
-            <article className="panel">
-              <p className="panel-label">Confirmed</p>
-              <p className="panel-value">{analytics.confirmed}</p>
-            </article>
-            <article className="panel">
-              <p className="panel-label">Today (Vienna)</p>
-              <p className="panel-value">{analytics.todayCalls}</p>
-            </article>
-            <article className="panel">
-              <p className="panel-label">Conversion</p>
-              <p className="panel-value">{analytics.conversionRate}%</p>
-            </article>
+          <section className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {statsCards.map((item) => (
+                <article key={item.label} className="panel">
+                  <p className="panel-label">{item.label}</p>
+                  <p className="panel-value">{item.value}</p>
+                </article>
+              ))}
+            </div>
 
-            <article className="panel lg:col-span-2">
-              <h2 className="text-lg font-semibold">Lead Funnel</h2>
-              <ul className="mt-3 space-y-2 text-sm text-slate-200">
-                {analytics.leadFunnel.map((item) => (
-                  <li key={item.status} className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-2">
-                    <span>{item.status}</span>
-                    <strong>{item.count}</strong>
-                  </li>
-                ))}
-              </ul>
-            </article>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <DashboardBarChart title="Lead Funnel" data={leadFunnelData} color="#72b4ff" />
+              <article className="panel">
+                <h3 className="text-lg font-semibold">Top States</h3>
+                <ul className="mt-3 space-y-2 text-sm text-slate-200">
+                  {analytics.topStates.map((item) => (
+                    <li key={`${item.state}-${item.count}`} className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-2">
+                      <span>{item.state || 'Unknown'}</span>
+                      <strong>{item.count}</strong>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-3 text-xs text-slate-400">
+                  Geographic concentration helps prioritize outreach and routing coverage.
+                </p>
+              </article>
+            </div>
 
-            <article className="panel lg:col-span-2">
-              <h2 className="text-lg font-semibold">Top States</h2>
-              <ul className="mt-3 space-y-2 text-sm text-slate-200">
-                {analytics.topStates.map((item) => (
-                  <li key={`${item.state}-${item.count}`} className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-2">
-                    <span>{item.state || 'Unknown'}</span>
-                    <strong>{item.count}</strong>
-                  </li>
-                ))}
-              </ul>
-            </article>
+            <DashboardBarChart title="12-Week Booking Trend" data={weeklyTrendData} color="#f2b560" />
+
+            <div className="grid gap-4 lg:grid-cols-3">
+              <DashboardBarChart title="Budget Breakdown" data={budgetData} color="#76d3b7" />
+              <DashboardBarChart title="Timeline Breakdown" data={timelineData} color="#ff8f79" />
+              <DashboardBarChart title="Current Systems" data={systemData} color="#72b4ff" />
+            </div>
           </section>
         ) : null}
 
         {activeTab === 'bookings' ? (
-          <section className="panel">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-xl font-semibold">Bookings</h2>
-              <button type="button" className="btn-primary" onClick={handleCsvExport}>
-                Export CSV
-              </button>
+          <section className="space-y-4">
+            <div className="panel">
+              <div className="grid gap-3 md:grid-cols-3">
+                <label className="field">
+                  <span>Search</span>
+                  <input
+                    value={bookingSearch}
+                    onChange={(event) => setBookingSearch(event.target.value)}
+                    placeholder="Customer, school, location"
+                  />
+                </label>
+                <label className="field">
+                  <span>Status Filter</span>
+                  <select
+                    value={bookingStatus}
+                    onChange={(event) =>
+                      setBookingStatus(event.target.value as 'all' | 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'NO_SHOW')
+                    }
+                  >
+                    <option value="all">All statuses</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="CONFIRMED">Confirmed</option>
+                    <option value="CANCELLED">Cancelled</option>
+                    <option value="NO_SHOW">No Show</option>
+                  </select>
+                </label>
+                <div className="flex items-end">
+                  <button type="button" className="btn-primary w-full" onClick={handleCsvExport}>
+                    Export CSV
+                  </button>
+                </div>
+              </div>
             </div>
 
-            <div className="mt-4 overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead className="text-xs uppercase tracking-wide text-slate-300">
-                  <tr>
-                    <th className="px-2 py-3">Customer</th>
-                    <th className="px-2 py-3">School</th>
-                    <th className="px-2 py-3">Start (Vienna)</th>
-                    <th className="px-2 py-3">Status</th>
-                    <th className="px-2 py-3">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bookingsRows.map(({ lead, booking }) => (
-                    <tr key={lead.id} className="border-t border-white/10 text-slate-100">
-                      <td className="px-2 py-3">
-                        <p>{booking.customerName}</p>
-                        <p className="text-xs text-slate-400">{booking.customerEmail}</p>
-                      </td>
-                      <td className="px-2 py-3">{lead.schoolName}</td>
-                      <td className="px-2 py-3">{formatInTimeZone(new Date(booking.startTs), VIENNA_TZ, 'MMM d, yyyy HH:mm')}</td>
-                      <td className="px-2 py-3">{booking.status}</td>
-                      <td className="px-2 py-3">
-                        <button type="button" className="btn-ghost" onClick={() => setSelectedLead(lead)}>
-                          View
-                        </button>
-                      </td>
+            <section className="panel">
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="text-xs uppercase tracking-wide text-slate-300">
+                    <tr>
+                      <th className="px-2 py-3">School</th>
+                      <th className="px-2 py-3">Date (Vienna)</th>
+                      <th className="px-2 py-3">Location</th>
+                      <th className="px-2 py-3">Students</th>
+                      <th className="px-2 py-3">Score</th>
+                      <th className="px-2 py-3">Lead Status</th>
+                      <th className="px-2 py-3">Booking</th>
+                      <th className="px-2 py-3">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {bookingsRows.map(({ lead, booking }) => (
+                      <tr key={lead.id} className="border-t border-white/10 text-slate-100">
+                        <td className="px-2 py-3">
+                          <p className="font-medium">{lead.schoolName}</p>
+                          <p className="text-xs text-slate-400">{booking.customerName}</p>
+                        </td>
+                        <td className="px-2 py-3">{formatInTimeZone(new Date(booking.startTs), VIENNA_TZ, 'MMM d, yyyy HH:mm')}</td>
+                        <td className="px-2 py-3">{lead.city}, {lead.state}</td>
+                        <td className="px-2 py-3">{lead.activeStudents}</td>
+                        <td className="px-2 py-3">{lead.qualificationScore}</td>
+                        <td className="px-2 py-3">{lead.leadStatus}</td>
+                        <td className="px-2 py-3">{booking.status}</td>
+                        <td className="px-2 py-3">
+                          <button type="button" className="btn-ghost" onClick={() => setSelectedLead(lead)}>
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
           </section>
         ) : null}
 
@@ -536,23 +768,12 @@ function App() {
                   <input
                     value={leadSearch}
                     onChange={(event) => setLeadSearch(event.target.value)}
-                    onBlur={() => {
-                      void loadLeads();
-                    }}
                     placeholder="School, email, customer"
                   />
                 </label>
                 <label className="field">
                   <span>Status Filter</span>
-                  <select
-                    value={leadFilter}
-                    onChange={(event) => {
-                      setLeadFilter(event.target.value as LeadStatus | 'all');
-                    }}
-                    onBlur={() => {
-                      void loadLeads();
-                    }}
-                  >
+                  <select value={leadFilter} onChange={(event) => setLeadFilter(event.target.value as LeadStatus | 'all')}>
                     <option value="all">All statuses</option>
                     {LEAD_COLUMNS.map((item) => (
                       <option key={item.key} value={item.key}>
@@ -625,172 +846,258 @@ function App() {
         ) : null}
 
         {activeTab === 'emails' ? (
-          <section className="grid gap-4 lg:grid-cols-2">
-            <form className="panel space-y-3" onSubmit={handleTemplateCreate}>
-              <h2 className="text-lg font-semibold">Email Templates</h2>
-              <label className="field">
-                <span>Key</span>
-                <input value={templateForm.key} onChange={(event) => setTemplateForm((prev) => ({ ...prev, key: event.target.value }))} required />
-              </label>
-              <label className="field">
-                <span>Name</span>
-                <input value={templateForm.name} onChange={(event) => setTemplateForm((prev) => ({ ...prev, name: event.target.value }))} required />
-              </label>
-              <label className="field">
-                <span>Subject</span>
-                <input value={templateForm.subject} onChange={(event) => setTemplateForm((prev) => ({ ...prev, subject: event.target.value }))} required />
-              </label>
-              <label className="field">
-                <span>HTML Body</span>
-                <textarea value={templateForm.htmlBody} onChange={(event) => setTemplateForm((prev) => ({ ...prev, htmlBody: event.target.value }))} rows={4} required />
-              </label>
-              <label className="field">
-                <span>Variables (comma separated)</span>
-                <input value={templateForm.variables} onChange={(event) => setTemplateForm((prev) => ({ ...prev, variables: event.target.value }))} />
-              </label>
-              <button className="btn-primary" type="submit">Save template</button>
-
-              <div className="space-y-2 pt-2 text-sm text-slate-200">
-                {templates.map((template) => (
-                  <div key={template.id} className="rounded-lg border border-white/10 bg-white/5 p-2">
-                    <p className="font-medium">{template.name} v{template.version}</p>
-                    <p className="text-xs text-slate-400">{template.subject}</p>
-                  </div>
-                ))}
-              </div>
-            </form>
-
-            <div className="space-y-4">
-              <form className="panel space-y-3" onSubmit={handleQueueCreate}>
-                <h2 className="text-lg font-semibold">Queue Email</h2>
-                <label className="field">
-                  <span>To</span>
-                  <input type="email" value={queueForm.to} onChange={(event) => setQueueForm((prev) => ({ ...prev, to: event.target.value }))} required />
-                </label>
-                <label className="field">
-                  <span>Subject</span>
-                  <input value={queueForm.subject} onChange={(event) => setQueueForm((prev) => ({ ...prev, subject: event.target.value }))} required />
-                </label>
-                <label className="field">
-                  <span>HTML Body</span>
-                  <textarea rows={3} value={queueForm.htmlBody} onChange={(event) => setQueueForm((prev) => ({ ...prev, htmlBody: event.target.value }))} required />
-                </label>
-                <label className="field">
-                  <span>Scheduled At (local)</span>
-                  <input type="datetime-local" value={queueForm.scheduledAt} onChange={(event) => setQueueForm((prev) => ({ ...prev, scheduledAt: event.target.value }))} />
-                </label>
-                <button className="btn-primary" type="submit">Queue email</button>
-              </form>
-
-              <form className="panel space-y-3" onSubmit={handleBlackoutCreate}>
-                <h2 className="text-lg font-semibold">Blackout Dates</h2>
-                <label className="field">
-                  <span>Provider</span>
-                  <select value={blackoutForm.providerId} onChange={(event) => setBlackoutForm((prev) => ({ ...prev, providerId: event.target.value }))} required>
-                    {providers.map((provider) => (
-                      <option key={provider.id} value={provider.id}>{provider.name}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field">
-                  <span>Date</span>
-                  <input type="date" value={blackoutForm.date} onChange={(event) => setBlackoutForm((prev) => ({ ...prev, date: event.target.value }))} required />
-                </label>
-                <label className="field">
-                  <span>Reason</span>
-                  <input value={blackoutForm.reason} onChange={(event) => setBlackoutForm((prev) => ({ ...prev, reason: event.target.value }))} />
-                </label>
-                <button className="btn-primary" type="submit">Add blackout date</button>
-
-                <ul className="space-y-2 text-sm text-slate-200">
-                  {blackoutDates.map((item) => (
-                    <li key={item.id} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-                      {item.date} - {item.reason || 'No reason'}
-                    </li>
-                  ))}
-                </ul>
-              </form>
-
-              <article className="panel">
-                <h3 className="text-lg font-semibold">Queue Status</h3>
-                <div className="mt-3 space-y-2 text-sm">
-                  {queue.slice(0, 8).map((item) => (
-                    <div key={item.id} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-                      <p className="font-medium">{item.to}</p>
-                      <p className="text-xs text-slate-300">{item.status} - {item.subject}</p>
-                    </div>
-                  ))}
-                </div>
-              </article>
+          <section className="space-y-4">
+            <div className="panel flex flex-wrap gap-2">
+              {(['templates', 'queue', 'blackout'] as EmailTabKey[]).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  className={`rounded-xl px-3 py-2 text-sm ${
+                    emailTab === tab ? 'bg-admin-panel text-admin-ink' : 'bg-white/5 text-slate-300'
+                  }`}
+                  onClick={() => setEmailTab(tab)}
+                >
+                  {tab === 'templates' ? 'Templates' : tab === 'queue' ? 'Queue' : 'Blackout Dates'}
+                </button>
+              ))}
             </div>
+
+            {emailTab === 'templates' ? (
+              <div className="grid gap-4 lg:grid-cols-2">
+                <form className="panel space-y-3" onSubmit={handleTemplateCreate}>
+                  <h2 className="text-lg font-semibold">Template Editor</h2>
+                  <label className="field">
+                    <span>Key</span>
+                    <input value={templateForm.key} onChange={(event) => setTemplateForm((prev) => ({ ...prev, key: event.target.value }))} required />
+                  </label>
+                  <label className="field">
+                    <span>Name</span>
+                    <input value={templateForm.name} onChange={(event) => setTemplateForm((prev) => ({ ...prev, name: event.target.value }))} required />
+                  </label>
+                  <label className="field">
+                    <span>Subject</span>
+                    <input value={templateForm.subject} onChange={(event) => setTemplateForm((prev) => ({ ...prev, subject: event.target.value }))} required />
+                  </label>
+                  <label className="field">
+                    <span>HTML Body</span>
+                    <textarea rows={6} value={templateForm.htmlBody} onChange={(event) => setTemplateForm((prev) => ({ ...prev, htmlBody: event.target.value }))} required />
+                  </label>
+                  <label className="field">
+                    <span>Text Body</span>
+                    <textarea rows={3} value={templateForm.textBody} onChange={(event) => setTemplateForm((prev) => ({ ...prev, textBody: event.target.value }))} />
+                  </label>
+                  <label className="field">
+                    <span>Variables (comma separated)</span>
+                    <input value={templateForm.variables} onChange={(event) => setTemplateForm((prev) => ({ ...prev, variables: event.target.value }))} />
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    <button className="btn-primary" type="submit">Save template</button>
+                    <button className="btn-secondary" type="button" onClick={() => void handleTemplatePreview()}>
+                      Preview
+                    </button>
+                  </div>
+                </form>
+
+                <div className="space-y-4">
+                  <article className="panel">
+                    <h3 className="text-lg font-semibold">Template Library</h3>
+                    <div className="mt-3 space-y-2 text-sm text-slate-200">
+                      {templates.map((template) => (
+                        <div key={template.id} className="rounded-lg border border-white/10 bg-white/5 p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <p className="font-medium">{template.name} v{template.version}</p>
+                            <button type="button" className="btn-ghost" onClick={() => void handleTemplateToggle(template)}>
+                              {template.isActive ? 'Disable' : 'Enable'}
+                            </button>
+                          </div>
+                          <p className="text-xs text-slate-400">{template.subject}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+
+                  <article className="panel">
+                    <h3 className="text-lg font-semibold">Preview + Test</h3>
+                    {templatePreview ? (
+                      <iframe title="template-preview" className="mt-3 h-48 w-full rounded-xl border border-white/10 bg-white" srcDoc={templatePreview} />
+                    ) : (
+                      <p className="mt-3 text-sm text-slate-400">Generate a preview to inspect rendered HTML.</p>
+                    )}
+                    <label className="field mt-3">
+                      <span>Test Recipient</span>
+                      <input type="email" value={templateTestEmail} onChange={(event) => setTemplateTestEmail(event.target.value)} placeholder="owner@academy.com" />
+                    </label>
+                    <button type="button" className="btn-secondary mt-3" onClick={() => void handleTemplateTestSend()}>
+                      Send Test Email
+                    </button>
+                  </article>
+                </div>
+              </div>
+            ) : null}
+
+            {emailTab === 'queue' ? (
+              <div className="grid gap-4 lg:grid-cols-2">
+                <form className="panel space-y-3" onSubmit={handleQueueCreate}>
+                  <h2 className="text-lg font-semibold">Queue Email</h2>
+                  <label className="field">
+                    <span>To</span>
+                    <input type="email" value={queueForm.to} onChange={(event) => setQueueForm((prev) => ({ ...prev, to: event.target.value }))} required />
+                  </label>
+                  <label className="field">
+                    <span>Subject</span>
+                    <input value={queueForm.subject} onChange={(event) => setQueueForm((prev) => ({ ...prev, subject: event.target.value }))} required />
+                  </label>
+                  <label className="field">
+                    <span>HTML Body</span>
+                    <textarea rows={4} value={queueForm.htmlBody} onChange={(event) => setQueueForm((prev) => ({ ...prev, htmlBody: event.target.value }))} required />
+                  </label>
+                  <label className="field">
+                    <span>Scheduled At (local)</span>
+                    <input type="datetime-local" value={queueForm.scheduledAt} onChange={(event) => setQueueForm((prev) => ({ ...prev, scheduledAt: event.target.value }))} />
+                  </label>
+                  <button className="btn-primary" type="submit">Queue email</button>
+                </form>
+
+                <article className="panel">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="text-lg font-semibold">Queue Status</h3>
+                    <select
+                      className="rounded-lg border border-white/15 bg-admin-panel px-2 py-1 text-sm"
+                      value={queueFilter}
+                      onChange={(event) => setQueueFilter(event.target.value as QueueFilter)}
+                    >
+                      <option value="all">All</option>
+                      <option value="PENDING">Pending</option>
+                      <option value="SENT">Sent</option>
+                      <option value="FAILED">Failed</option>
+                    </select>
+                  </div>
+                  <div className="mt-3 max-h-96 space-y-2 overflow-auto text-sm">
+                    {filteredQueue.map((item) => (
+                      <div key={item.id} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                        <p className="font-medium">{item.to}</p>
+                        <p className="text-xs text-slate-300">{item.status} - {item.subject}</p>
+                        <p className="text-xs text-slate-400">Attempts: {item.attempts}/{item.maxAttempts}</p>
+                      </div>
+                    ))}
+                  </div>
+                </article>
+              </div>
+            ) : null}
+
+            {emailTab === 'blackout' ? (
+              <div className="grid gap-4 lg:grid-cols-2">
+                <form className="panel space-y-3" onSubmit={handleBlackoutCreate}>
+                  <h2 className="text-lg font-semibold">No-Battle Days</h2>
+                  <label className="field">
+                    <span>Provider</span>
+                    <select value={blackoutForm.providerId} onChange={(event) => setBlackoutForm((prev) => ({ ...prev, providerId: event.target.value }))} required>
+                      {providers.map((provider) => (
+                        <option key={provider.id} value={provider.id}>{provider.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field">
+                    <span>Date</span>
+                    <input type="date" value={blackoutForm.date} onChange={(event) => setBlackoutForm((prev) => ({ ...prev, date: event.target.value }))} required />
+                  </label>
+                  <label className="field">
+                    <span>Reason</span>
+                    <input value={blackoutForm.reason} onChange={(event) => setBlackoutForm((prev) => ({ ...prev, reason: event.target.value }))} />
+                  </label>
+                  <button className="btn-primary" type="submit">Add blackout date</button>
+                </form>
+
+                <article className="panel">
+                  <h3 className="text-lg font-semibold">Active Blackout Dates</h3>
+                  <ul className="mt-3 space-y-2 text-sm text-slate-200">
+                    {blackoutDates.map((item) => (
+                      <li key={item.id} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                        {item.date} - {item.reason || 'No reason'}
+                      </li>
+                    ))}
+                  </ul>
+                </article>
+              </div>
+            ) : null}
           </section>
         ) : null}
 
         {activeTab === 'settings' ? (
           <section className="grid gap-4 lg:grid-cols-2">
             <form className="panel space-y-3" onSubmit={handleSettingsSave}>
-              <h2 className="text-xl font-semibold">Call Configuration</h2>
+              <h2 className="text-xl font-semibold">Discovery Call Configuration</h2>
               <label className="field">
                 <span>Default Provider</span>
                 <select
                   value={settingsForm.providerId}
-                  onChange={(event) =>
-                    setSettingsForm((prev) => ({
-                      ...prev,
-                      providerId: event.target.value,
-                    }))
-                  }
+                  onChange={(event) => setSettingsForm((prev) => ({ ...prev, providerId: event.target.value }))}
                   required
                 >
                   {providers.map((provider) => (
-                    <option key={provider.id} value={provider.id}>
-                      {provider.name}
-                    </option>
+                    <option key={provider.id} value={provider.id}>{provider.name}</option>
                   ))}
                 </select>
               </label>
               <label className="field">
-                <span>Default Discovery Duration (minutes)</span>
+                <span>Call Duration (minutes)</span>
                 <input
                   type="number"
                   min={15}
                   max={120}
                   value={settingsForm.defaultDurationMinutes}
-                  onChange={(event) =>
-                    setSettingsForm((prev) => ({
-                      ...prev,
-                      defaultDurationMinutes: Number(event.target.value),
-                    }))
-                  }
+                  onChange={(event) => setSettingsForm((prev) => ({ ...prev, defaultDurationMinutes: Number(event.target.value) }))}
                 />
               </label>
               <label className="field">
-                <span>Follow-Up Window (hours)</span>
+                <span>Minimum Notice (hours)</span>
                 <input
                   type="number"
                   min={1}
-                  max={72}
-                  value={settingsForm.followUpWindowHours}
-                  onChange={(event) =>
-                    setSettingsForm((prev) => ({
-                      ...prev,
-                      followUpWindowHours: Number(event.target.value),
-                    }))
-                  }
+                  max={168}
+                  value={settingsForm.minimumNoticeHours}
+                  onChange={(event) => setSettingsForm((prev) => ({ ...prev, minimumNoticeHours: Number(event.target.value) }))}
                 />
               </label>
+              <label className="field">
+                <span>Max Advance Booking (days)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={settingsForm.maximumAdvanceDays}
+                  onChange={(event) => setSettingsForm((prev) => ({ ...prev, maximumAdvanceDays: Number(event.target.value) }))}
+                />
+              </label>
+              <label className="field">
+                <span>Buffer Between Calls (minutes)</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={120}
+                  value={settingsForm.bufferMinutes}
+                  onChange={(event) => setSettingsForm((prev) => ({ ...prev, bufferMinutes: Number(event.target.value) }))}
+                />
+              </label>
+              <label className="field">
+                <span>Admin Timezone</span>
+                <select
+                  value={settingsForm.adminTimezone}
+                  onChange={(event) => setSettingsForm((prev) => ({ ...prev, adminTimezone: event.target.value }))}
+                >
+                  <option value="America/New_York">ET</option>
+                  <option value="America/Chicago">CT</option>
+                  <option value="America/Denver">MT</option>
+                  <option value="America/Los_Angeles">PT</option>
+                </select>
+              </label>
 
-              <h2 className="pt-2 text-xl font-semibold">Security Policy</h2>
+              <h2 className="pt-2 text-xl font-semibold">Password & Session</h2>
               <label className="inline-flex items-center gap-2 text-sm text-slate-200">
                 <input
                   type="checkbox"
                   checked={settingsForm.enforce2fa}
-                  onChange={(event) =>
-                    setSettingsForm((prev) => ({
-                      ...prev,
-                      enforce2fa: event.target.checked,
-                    }))
-                  }
+                  onChange={(event) => setSettingsForm((prev) => ({ ...prev, enforce2fa: event.target.checked }))}
                 />
                 Enforce two-factor authentication for admin logins
               </label>
@@ -801,33 +1108,45 @@ function App() {
                   min={30}
                   max={365}
                   value={settingsForm.rotationDays}
-                  onChange={(event) =>
-                    setSettingsForm((prev) => ({
-                      ...prev,
-                      rotationDays: Number(event.target.value),
-                    }))
-                  }
+                  onChange={(event) => setSettingsForm((prev) => ({ ...prev, rotationDays: Number(event.target.value) }))}
                 />
               </label>
 
               <button className="btn-primary" type="submit">Save settings</button>
             </form>
 
-            <article className="panel">
-              <h3 className="text-xl font-semibold">Stored Settings Snapshot</h3>
-              <p className="mt-2 text-sm text-slate-300">These values are persisted through /admin/settings and used by operations tooling.</p>
-              <div className="mt-4 space-y-2 text-sm">
-                {settings.map((item) => (
-                  <div key={item.id} className="rounded-lg border border-white/10 bg-white/5 p-3">
-                    <p className="font-medium">{item.key}</p>
-                    <pre className="mt-1 overflow-x-auto text-xs text-slate-300">{JSON.stringify(item.value, null, 2)}</pre>
-                  </div>
-                ))}
-              </div>
-              <p className="mt-4 text-xs text-slate-400">
-                Admin passwords are not changed via this API; this section stores policy metadata for your backend workflows.
-              </p>
-            </article>
+            <div className="space-y-4">
+              <form className="panel space-y-3" onSubmit={handlePasswordChange}>
+                <h3 className="text-xl font-semibold">Change Admin Password</h3>
+                <label className="field">
+                  <span>Current Password</span>
+                  <input type="password" required />
+                </label>
+                <label className="field">
+                  <span>New Password</span>
+                  <input type="password" required minLength={8} />
+                </label>
+                <label className="field">
+                  <span>Confirm Password</span>
+                  <input type="password" required minLength={8} />
+                </label>
+                <button className="btn-secondary" type="submit">Submit Password Change</button>
+                <button className="btn-secondary" type="button" onClick={logout}>Logout</button>
+              </form>
+
+              <article className="panel">
+                <h3 className="text-xl font-semibold">Stored Settings Snapshot</h3>
+                <p className="mt-2 text-sm text-slate-300">Persisted through /admin/settings.</p>
+                <div className="mt-4 space-y-2 text-sm">
+                  {settings.map((item) => (
+                    <div key={item.id} className="rounded-lg border border-white/10 bg-white/5 p-3">
+                      <p className="font-medium">{item.key}</p>
+                      <pre className="mt-1 overflow-x-auto text-xs text-slate-300">{JSON.stringify(item.value, null, 2)}</pre>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            </div>
           </section>
         ) : null}
       </div>
@@ -872,9 +1191,44 @@ function App() {
               </div>
             </dl>
 
+            <label className="field mt-4">
+              <span>Lead Status</span>
+              <select value={modalLeadStatus} onChange={(event) => setModalLeadStatus(event.target.value as LeadStatus)}>
+                {LEAD_COLUMNS.map((item) => (
+                  <option key={item.key} value={item.key}>{item.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field mt-3">
+              <span>Admin Notes</span>
+              <textarea rows={4} value={modalNote} onChange={(event) => setModalNote(event.target.value)} />
+            </label>
+
             <p className="mt-4 text-sm text-slate-200">
               Challenges: {selectedLead.schedulingChallenges || 'Not specified'}
             </p>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => {
+                  void moveLeadStatus(selectedLead.id, modalLeadStatus, modalNote);
+                  setSelectedLead(null);
+                }}
+              >
+                Save Lead Update
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  void setTomorrowFollowUp(selectedLead.id);
+                }}
+              >
+                Set +24h Follow-up
+              </button>
+            </div>
           </article>
         </div>
       ) : null}

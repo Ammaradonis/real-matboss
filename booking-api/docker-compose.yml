@@ -25,7 +25,7 @@ services:
       SMTP_HOST: localhost
       SMTP_PORT: 1025
       SMTP_FROM: MatBoss <hello@matboss.online>
-      CORS_ORIGINS: https://matboss.online
+      CORS_ORIGINS: https://matboss.com
       NODE_ENV: development
       PORT: 3000
     depends_on:

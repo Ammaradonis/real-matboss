@@ -3,7 +3,7 @@ import { InjectDataSource, TypeOrmModule } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 
 @Controller('health')
-class HealthController {
+export class HealthController {
   constructor(
     @InjectDataSource()
     private readonly dataSource: DataSource,

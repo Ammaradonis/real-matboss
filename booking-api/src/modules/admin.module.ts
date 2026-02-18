@@ -8,6 +8,7 @@ import {
   Query,
   Req,
   Res,
+  UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { InjectRepository, TypeOrmModule } from '@nestjs/typeorm';
@@ -25,6 +26,7 @@ import {
   AdminSettingEntity,
   BookingEntity,
   DiscoveryCallEntity,
+  EmailQueueEntity,
   LeadStatus,
   UserEntity,
   UserRole,
@@ -70,7 +72,7 @@ class UpdateSettingDto {
 }
 
 @Controller('admin')
-class AdminController {
+export class AdminController {
   constructor(
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
@@ -80,6 +82,8 @@ class AdminController {
     private readonly bookingRepository: Repository<BookingEntity>,
     @InjectRepository(AdminSettingEntity)
     private readonly settingRepository: Repository<AdminSettingEntity>,
+    @InjectRepository(EmailQueueEntity)
+    private readonly emailQueueRepository: Repository<EmailQueueEntity>,
   ) {}
 
   @Post('auth/login')
@@ -90,12 +94,12 @@ class AdminController {
     });
 
     if (!user) {
-      return { accessToken: '' };
+      throw new UnauthorizedException('Invalid admin credentials');
     }
 
     const valid = await bcrypt.compare(input.password, user.passwordHash);
     if (!valid) {
-      return { accessToken: '' };
+      throw new UnauthorizedException('Invalid admin credentials');
     }
 
     return {
@@ -179,8 +183,10 @@ class AdminController {
 
     const statusBreakdown = await this.discoveryRepository
       .createQueryBuilder('d')
+      .leftJoin('d.booking', 'b')
       .select('d.lead_status', 'status')
       .addSelect('COUNT(*)', 'count')
+      .where('b.tenant_id = :tenantId', { tenantId })
       .groupBy('d.lead_status')
       .getRawMany<{ status: string; count: string }>();
 
@@ -195,6 +201,74 @@ class AdminController {
       .limit(10)
       .getRawMany();
 
+    const thisMonth = await this.bookingRepository
+      .createQueryBuilder('b')
+      .where('b.tenant_id = :tenantId', { tenantId })
+      .andWhere("date_trunc('month', b.start_ts) = date_trunc('month', NOW())")
+      .getCount();
+
+    const lastMonth = await this.bookingRepository
+      .createQueryBuilder('b')
+      .where('b.tenant_id = :tenantId', { tenantId })
+      .andWhere(
+        "date_trunc('month', b.start_ts) = date_trunc('month', NOW() - interval '1 month')",
+      )
+      .getCount();
+
+    const monthlyDeltaPct =
+      lastMonth > 0 ? Number((((thisMonth - lastMonth) / lastMonth) * 100).toFixed(2)) : null;
+
+    const weeklyTrend = await this.bookingRepository
+      .createQueryBuilder('b')
+      .select("to_char(date_trunc('week', b.start_ts), 'YYYY-MM-DD')", 'weekStart')
+      .addSelect('COUNT(*)', 'count')
+      .where('b.tenant_id = :tenantId', { tenantId })
+      .andWhere("b.start_ts >= NOW() - interval '8 weeks'")
+      .groupBy("date_trunc('week', b.start_ts)")
+      .orderBy("date_trunc('week', b.start_ts)", 'ASC')
+      .getRawMany<{ weekStart: string; count: string }>();
+
+    const budgetBreakdown = await this.discoveryRepository
+      .createQueryBuilder('d')
+      .leftJoin('d.booking', 'b')
+      .select('COALESCE(d.budget_range, \'unknown\')', 'label')
+      .addSelect('COUNT(*)', 'count')
+      .where('b.tenant_id = :tenantId', { tenantId })
+      .groupBy('COALESCE(d.budget_range, \'unknown\')')
+      .orderBy('count', 'DESC')
+      .getRawMany<{ label: string; count: string }>();
+
+    const timelineBreakdown = await this.discoveryRepository
+      .createQueryBuilder('d')
+      .leftJoin('d.booking', 'b')
+      .select('COALESCE(d.implementation_timeline, \'unknown\')', 'label')
+      .addSelect('COUNT(*)', 'count')
+      .where('b.tenant_id = :tenantId', { tenantId })
+      .groupBy('COALESCE(d.implementation_timeline, \'unknown\')')
+      .orderBy('count', 'DESC')
+      .getRawMany<{ label: string; count: string }>();
+
+    const systemBreakdown = await this.discoveryRepository
+      .createQueryBuilder('d')
+      .leftJoin('d.booking', 'b')
+      .select('COALESCE(d.current_system, \'unknown\')', 'label')
+      .addSelect('COUNT(*)', 'count')
+      .where('b.tenant_id = :tenantId', { tenantId })
+      .groupBy('COALESCE(d.current_system, \'unknown\')')
+      .orderBy('count', 'DESC')
+      .getRawMany<{ label: string; count: string }>();
+
+    const emailStatsRows = await this.emailQueueRepository
+      .createQueryBuilder('q')
+      .select('q.status', 'status')
+      .addSelect('COUNT(*)', 'count')
+      .where('q.tenant_id = :tenantId', { tenantId })
+      .groupBy('q.status')
+      .getRawMany<{ status: string; count: string }>();
+    const emailStats = Object.fromEntries(
+      emailStatsRows.map((row) => [row.status.toLowerCase(), Number.parseInt(row.count, 10)]),
+    );
+
     return {
       totalBookings,
       confirmed,
@@ -203,6 +277,16 @@ class AdminController {
       todayCalls: callsToday,
       leadFunnel: statusBreakdown,
       topStates,
+      monthComparison: {
+        thisMonth,
+        lastMonth,
+        deltaPercent: monthlyDeltaPct,
+      },
+      weeklyTrend,
+      budgetBreakdown,
+      timelineBreakdown,
+      systemBreakdown,
+      emailStats,
     };
   }
 
@@ -270,7 +354,15 @@ class AdminController {
 }
 
 @Module({
-  imports: [TypeOrmModule.forFeature([UserEntity, BookingEntity, DiscoveryCallEntity, AdminSettingEntity])],
+  imports: [
+    TypeOrmModule.forFeature([
+      UserEntity,
+      BookingEntity,
+      DiscoveryCallEntity,
+      AdminSettingEntity,
+      EmailQueueEntity,
+    ]),
+  ],
   controllers: [AdminController],
 })
 export class AdminModule {}

@@ -148,7 +148,7 @@ class UpdateTemplateDto {
 
 @Controller('admin/email')
 @UseGuards(AuthGuard)
-class EmailController {
+export class EmailController {
   constructor(
     @InjectRepository(EmailTemplateEntity)
     private readonly templateRepository: Repository<EmailTemplateEntity>,
@@ -336,7 +336,7 @@ class EmailController {
 }
 
 @Injectable()
-class EmailQueueProcessor {
+export class EmailQueueProcessor {
   constructor(
     @InjectRepository(EmailQueueEntity)
     private readonly queueRepository: Repository<EmailQueueEntity>,

@@ -19,6 +19,9 @@ const apiMocks = {
   setLeadFollowUp: vi.fn(),
   exportDiscoveryCsv: vi.fn(),
   createEmailTemplate: vi.fn(),
+  previewEmailTemplate: vi.fn(),
+  testSendEmail: vi.fn(),
+  updateEmailTemplate: vi.fn(),
   enqueueEmail: vi.fn(),
   addBlackoutDate: vi.fn(),
   upsertSetting: vi.fn(),
@@ -44,6 +47,9 @@ vi.mock('./api', () => ({
   setLeadFollowUp: (...args: unknown[]) => apiMocks.setLeadFollowUp(...args),
   exportDiscoveryCsv: (...args: unknown[]) => apiMocks.exportDiscoveryCsv(...args),
   createEmailTemplate: (...args: unknown[]) => apiMocks.createEmailTemplate(...args),
+  previewEmailTemplate: (...args: unknown[]) => apiMocks.previewEmailTemplate(...args),
+  testSendEmail: (...args: unknown[]) => apiMocks.testSendEmail(...args),
+  updateEmailTemplate: (...args: unknown[]) => apiMocks.updateEmailTemplate(...args),
   enqueueEmail: (...args: unknown[]) => apiMocks.enqueueEmail(...args),
   addBlackoutDate: (...args: unknown[]) => apiMocks.addBlackoutDate(...args),
   upsertSetting: (...args: unknown[]) => apiMocks.upsertSetting(...args),
@@ -78,6 +84,12 @@ describe('Admin App', () => {
       todayCalls: 4,
       leadFunnel: [{ status: 'new', count: '2' }],
       topStates: [{ state: 'Arizona', count: '4' }],
+      monthComparison: { thisMonth: 5, lastMonth: 4, deltaPercent: 25 },
+      weeklyTrend: [{ weekStart: '2026-03-01', count: '3' }],
+      budgetBreakdown: [{ label: '$500-$1,500', count: '2' }],
+      timelineBreakdown: [{ label: '30-60 days', count: '1' }],
+      systemBreakdown: [{ label: 'Mindbody', count: '1' }],
+      emailStats: { sent: 3, failed: 1, pending: 0 },
     });
     apiMocks.getDiscoveryLeads.mockResolvedValue([
       {
@@ -122,6 +134,9 @@ describe('Admin App', () => {
     apiMocks.setLeadFollowUp.mockResolvedValue({ updated: true });
     apiMocks.exportDiscoveryCsv.mockResolvedValue(new Blob(['a,b'], { type: 'text/csv' }));
     apiMocks.createEmailTemplate.mockResolvedValue({});
+    apiMocks.previewEmailTemplate.mockResolvedValue({ html: '<p>preview</p>' });
+    apiMocks.testSendEmail.mockResolvedValue({ sent: true });
+    apiMocks.updateEmailTemplate.mockResolvedValue({});
     apiMocks.enqueueEmail.mockResolvedValue({});
     apiMocks.addBlackoutDate.mockResolvedValue({});
     apiMocks.upsertSetting.mockResolvedValue({});
@@ -154,7 +169,7 @@ describe('Admin App', () => {
     render(<App />);
 
     await user.type(screen.getByPlaceholderText('admin@matboss.online'), 'admin@matboss.online');
-    await user.type(screen.getByPlaceholderText('••••••••'), 'password123');
+    await user.type(screen.getByPlaceholderText('********'), 'password123');
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
 
     await waitFor(() => {
@@ -221,6 +236,8 @@ describe('Admin App', () => {
       );
     });
 
+    await user.click(screen.getByRole('button', { name: 'Queue' }));
+
     const toInput = screen.getByRole('textbox', { name: 'To' });
     await user.clear(toInput);
     await user.type(toInput, 'owner@academy.com');
@@ -232,6 +249,7 @@ describe('Admin App', () => {
       );
     });
 
+    await user.click(screen.getByRole('button', { name: 'Blackout Dates' }));
     await user.click(screen.getByRole('button', { name: 'Add blackout date' }));
     await waitFor(() => {
       expect(apiMocks.addBlackoutDate).toHaveBeenCalledWith(

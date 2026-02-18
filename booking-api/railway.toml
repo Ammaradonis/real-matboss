@@ -5,6 +5,5 @@ dockerfilePath = "Dockerfile"
 [deploy]
 numReplicas = 1
 restartPolicyType = "ON_FAILURE"
-startCommand = "node scripts/migrate.js && node dist/main.js"
-healthcheckPath = "/api/v1/health"
+healthcheckPath = "/api/v1/health/ready"
 healthcheckTimeout = 180

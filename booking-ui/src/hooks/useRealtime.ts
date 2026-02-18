@@ -9,15 +9,14 @@ export function useRealtime(providerId: string, onAvailabilityChange: () => void
       return;
     }
 
-    const socket = io(WS_URL, {
+    const socket = io(`${WS_URL}/ws`, {
       transports: ['websocket'],
     });
 
-    socket.emit('joinProviderRoom', { providerId });
+    socket.emit('subscribe.provider', { providerId });
     socket.on('availability.changed', onAvailabilityChange);
 
     return () => {
-      socket.emit('leaveProviderRoom', { providerId });
       socket.off('availability.changed', onAvailabilityChange);
       socket.close();
     };

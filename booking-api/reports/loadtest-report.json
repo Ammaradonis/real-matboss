@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-02-18T05:38:10.739Z",
+  "baseUrl": "http://localhost:3000/api/v1",
+  "concurrency": 100,
+  "requestsPerWorker": 20,
+  "results": [
+    {
+      "name": "Availability Query",
+      "totalRequests": 2000,
+      "success": 0,
+      "errors": 2000,
+      "statuses": {
+        "network_error": 2000
+      },
+      "latencyMs": [],
+      "p50Ms": 0,
+      "p95Ms": 0,
+      "errorRatePercent": 100
+    }
+  ]
+}

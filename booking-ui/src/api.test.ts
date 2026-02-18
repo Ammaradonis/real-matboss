@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createDiscoveryBooking, getSlots } from './api';
+import {
+  createDiscoveryBooking,
+  getBooking,
+  getEventTypes,
+  getProviderByUrl,
+  getProviders,
+  getSlots,
+} from './api';
 import type { SchoolDetails } from './types';
 
 const fetchMock = vi.fn();
@@ -15,11 +22,34 @@ describe('booking-ui api client', () => {
     vi.unstubAllGlobals();
   });
 
+  it('fetches providers, provider-by-url and event types', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => [{ id: 'provider-1', name: 'MatBoss Ops' }],
+    });
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ tenantSlug: 'matboss', provider: { id: 'provider-1' } }),
+    });
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => [{ id: 'event-1', name: 'Discovery', isActive: true }],
+    });
+
+    await getProviders();
+    await getProviderByUrl('matboss', 'ops');
+    await getEventTypes('provider-1');
+
+    expect(fetchMock.mock.calls[0][0]).toContain('/api/v1/providers');
+    expect(fetchMock.mock.calls[1][0]).toContain('/api/v1/providers/by-url/matboss/ops');
+    expect(fetchMock.mock.calls[2][0]).toContain('/api/v1/event-types/provider/provider-1');
+  });
+
   it('sends slot request with tenant header and query params', async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({
-        slots: [{ startUtc: '2026-03-01T14:00:00.000Z', endUtc: '2026-03-01T14:30:00.000Z', isAvailable: true }],
+        slots: [{ startUtc: '2026-03-01T14:00:00.000Z', endUtc: '2026-03-01T14:30:00.000Z' }],
       }),
     });
 
@@ -28,13 +58,15 @@ describe('booking-ui api client', () => {
       fromIso: '2026-03-01T00:00:00.000Z',
       toIso: '2026-03-02T00:00:00.000Z',
       viewerTz: 'America/New_York',
+      eventTypeId: 'event-1',
       tenantId: 'tenant-1',
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toContain('/api/v1/providers/provider-1/availability/slots?');
+    expect(url).toContain('/api/v1/providers/provider-1/availability?');
     expect(url).toContain('viewerTz=America%2FNew_York');
+    expect(url).toContain('eventTypeId=event-1');
     expect(options.headers).toMatchObject({
       'Content-Type': 'application/json',
       'x-tenant-id': 'tenant-1',
@@ -50,6 +82,7 @@ describe('booking-ui api client', () => {
       contactName: 'Alex',
       email: 'alex@example.com',
       phone: '602-555-0101',
+      preferredContactMethod: 'email',
       activeStudents: 120,
       instructorCount: 6,
       currentSystem: 'Spreadsheet',
@@ -93,7 +126,7 @@ describe('booking-ui api client', () => {
     fetchMock.mockResolvedValueOnce({
       ok: false,
       status: 409,
-      text: async () => 'slot_taken',
+      json: async () => ({ message: 'slot_taken' }),
     });
 
     await expect(
@@ -108,5 +141,16 @@ describe('booking-ui api client', () => {
         details,
       }),
     ).rejects.toThrow('slot_taken');
+  });
+
+  it('fetches booking by id', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ id: 'booking-1' }),
+    });
+
+    await getBooking('booking-1');
+
+    expect(fetchMock.mock.calls[0][0]).toContain('/api/v1/bookings/booking-1');
   });
 });

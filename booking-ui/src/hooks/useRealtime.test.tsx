@@ -29,13 +29,14 @@ describe('useRealtime', () => {
     const onAvailabilityChange = vi.fn();
     const { unmount } = renderHook(() => useRealtime('provider-1', onAvailabilityChange));
 
-    expect(ioMock).toHaveBeenCalled();
-    expect(emitMock).toHaveBeenCalledWith('joinProviderRoom', { providerId: 'provider-1' });
+    expect(ioMock).toHaveBeenCalledWith('http://localhost:3000/ws', {
+      transports: ['websocket'],
+    });
+    expect(emitMock).toHaveBeenCalledWith('subscribe.provider', { providerId: 'provider-1' });
     expect(onMock).toHaveBeenCalledWith('availability.changed', onAvailabilityChange);
 
     unmount();
 
-    expect(emitMock).toHaveBeenCalledWith('leaveProviderRoom', { providerId: 'provider-1' });
     expect(offMock).toHaveBeenCalledWith('availability.changed', onAvailabilityChange);
     expect(closeMock).toHaveBeenCalled();
   });

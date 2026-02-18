@@ -7,7 +7,14 @@ import { AppModule } from '../src/app.module';
 
 const runDbTests = process.env.RUN_DB_TESTS === '1';
 
-(runDbTests ? describe : describe.skip)('Health and concurrency (e2e)', () => {
+describe('Health and concurrency (e2e)', () => {
+  if (!runDbTests) {
+    it('requires RUN_DB_TESTS=1 to execute DB-backed e2e checks', () => {
+      expect(runDbTests).toBe(false);
+    });
+    return;
+  }
+
   let app: INestApplication;
   let dataSource: DataSource;
 

@@ -147,6 +147,28 @@ export function createEmailTemplate(
   });
 }
 
+export function previewEmailTemplate(
+  token: string,
+  input: { htmlBody: string; variables?: Record<string, unknown> },
+): Promise<{ html: string }> {
+  return request('/admin/email/preview', {
+    token,
+    method: 'POST',
+    body: input,
+  });
+}
+
+export function testSendEmail(
+  token: string,
+  input: { to: string; subject: string; htmlBody: string },
+): Promise<{ sent: true }> {
+  return request('/admin/email/test-send', {
+    token,
+    method: 'POST',
+    body: input,
+  });
+}
+
 export function updateEmailTemplate(
   token: string,
   id: string,

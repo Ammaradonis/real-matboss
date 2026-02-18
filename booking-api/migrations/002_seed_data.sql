@@ -83,7 +83,7 @@ INSERT INTO tenants (id, name, slug)
 VALUES ('11111111-1111-1111-1111-111111111111', 'MatBoss Demo Tenant', 'matboss-demo')
 ON CONFLICT (slug) DO NOTHING;
 
-INSERT INTO users (id, tenant_id, email, password, password_hash, name, time_zone)
+INSERT INTO users (id, tenant_id, email, password, password_hash, name, role, time_zone)
 VALUES (
   '22222222-2222-2222-2222-222222222222',
   '11111111-1111-1111-1111-111111111111',
@@ -97,11 +97,12 @@ VALUES (
     '$2b$10$hD2K9Lhdg4f9ymJv9fVh5Ot8gTGe0rXe3G5UpiRaY1oCbcnZ6FQ4W'
   ),
   'MatBoss Admin',
+  'ADMIN',
   'Europe/Vienna'
 )
 ON CONFLICT (tenant_id, email) DO NOTHING;
 
-INSERT INTO users (id, tenant_id, email, password, password_hash, name, time_zone)
+INSERT INTO users (id, tenant_id, email, password, password_hash, name, role, time_zone)
 VALUES (
   '33333333-3333-3333-3333-333333333333',
   '11111111-1111-1111-1111-111111111111',
@@ -109,6 +110,7 @@ VALUES (
   '$2b$10$hD2K9Lhdg4f9ymJv9fVh5Ot8gTGe0rXe3G5UpiRaY1oCbcnZ6FQ4W',
   '$2b$10$hD2K9Lhdg4f9ymJv9fVh5Ot8gTGe0rXe3G5UpiRaY1oCbcnZ6FQ4W',
   'Ammar Alkheder',
+  'PROVIDER',
   'Europe/Vienna'
 )
 ON CONFLICT (tenant_id, email) DO NOTHING;

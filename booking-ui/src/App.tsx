@@ -1,7 +1,8 @@
-import { addDays, format, startOfDay } from 'date-fns';
+import { addDays, differenceInCalendarDays, format, startOfDay } from 'date-fns';
+import { formatInTimeZone } from 'date-fns-tz';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { createDiscoveryBooking, getSlots } from './api';
+import { createDiscoveryBooking, getEventTypes, getProviders, getSlots } from './api';
 import { CalendarGrid } from './components/CalendarGrid';
 import { ConfirmationView } from './components/ConfirmationView';
 import { EventTypeCard } from './components/EventTypeCard';
@@ -10,16 +11,42 @@ import { SlotPicker } from './components/SlotPicker';
 import { StepIndicator } from './components/StepIndicator';
 import { SuccessView } from './components/SuccessView';
 import { useRealtime } from './hooks/useRealtime';
-import type { BookingStep, SchoolDetails, SlotDto } from './types';
+import type {
+  BookingStep,
+  DiscoveryBookingResponse,
+  EventTypeDto,
+  ProviderDto,
+  SchoolDetails,
+  SlotDto,
+} from './types';
 
-const defaultEventType = {
+const DEFAULT_EVENT_TYPE: EventTypeDto = {
   id: '55555555-5555-5555-5555-555555555551',
+  providerId: '44444444-4444-4444-4444-444444444444',
   name: 'MatBoss Discovery Call',
+  slug: 'discovery-30',
   durationMinutes: 30,
-  kind: 'ONE_ON_ONE' as const,
+  maxAttendees: null,
+  priceCents: 0,
+  requiresApproval: false,
+  isActive: true,
+  color: '#62d0ff',
+  kind: 'ONE_ON_ONE',
 };
 
-const providerId = '44444444-4444-4444-4444-444444444444';
+const DEFAULT_PROVIDER: ProviderDto = {
+  id: '44444444-4444-4444-4444-444444444444',
+  name: 'MatBoss Vienna Operations',
+  bio: '',
+  specialties: '',
+  bookingUrl: 'matboss-discovery',
+  timeZone: 'America/New_York',
+  isActive: true,
+  bufferBeforeMinutes: 0,
+  bufferAfterMinutes: 0,
+  minimumNoticeHours: 2,
+  maximumAdvanceDays: 60,
+};
 
 function App() {
   const timezone = useMemo(
@@ -28,7 +55,10 @@ function App() {
   );
 
   const [step, setStep] = useState<BookingStep>(1);
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [provider, setProvider] = useState<ProviderDto>(DEFAULT_PROVIDER);
+  const [eventTypes, setEventTypes] = useState<EventTypeDto[]>([DEFAULT_EVENT_TYPE]);
+  const [selectedEventType, setSelectedEventType] = useState<EventTypeDto>(DEFAULT_EVENT_TYPE);
+  const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
   const [slots, setSlots] = useState<SlotDto[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<SlotDto | null>(null);
   const [details, setDetails] = useState<SchoolDetails>({
@@ -39,6 +69,7 @@ function App() {
     contactName: '',
     email: '',
     phone: '',
+    preferredContactMethod: 'email',
     activeStudents: 0,
     instructorCount: 1,
     currentSystem: '',
@@ -46,35 +77,82 @@ function App() {
     budgetRange: '',
     implementationTimeline: '',
   });
+  const [bootstrapLoading, setBootstrapLoading] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [bookingResult, setBookingResult] = useState<DiscoveryBookingResponse | null>(null);
   const [error, setError] = useState('');
 
+  const windowEnd = useMemo(() => addDays(new Date(), 60), []);
+  const daysUntilWindowClose = useMemo(
+    () => Math.max(0, differenceInCalendarDays(windowEnd, new Date())),
+    [windowEnd],
+  );
+
+  const loadBootstrap = useCallback(async () => {
+    setBootstrapLoading(true);
+    try {
+      const providerRows = await getProviders();
+      const chosenProvider = providerRows.find((row) => row.isActive) ?? providerRows[0] ?? DEFAULT_PROVIDER;
+      setProvider(chosenProvider);
+
+      const eventTypeRows = await getEventTypes(chosenProvider.id);
+      const activeEventTypes = eventTypeRows.filter((item) => item.isActive);
+      const nextTypes = activeEventTypes.length ? activeEventTypes : [DEFAULT_EVENT_TYPE];
+      setEventTypes(nextTypes);
+      setSelectedEventType(nextTypes[0]);
+      setError('');
+    } catch (bootstrapError) {
+      setProvider(DEFAULT_PROVIDER);
+      setEventTypes([DEFAULT_EVENT_TYPE]);
+      setSelectedEventType(DEFAULT_EVENT_TYPE);
+      setError(
+        bootstrapError instanceof Error
+          ? bootstrapError.message
+          : 'Unable to load provider metadata; using fallback discovery profile.',
+      );
+    } finally {
+      setBootstrapLoading(false);
+    }
+  }, []);
+
   const loadSlots = useCallback(async () => {
+    if (!provider.id) {
+      return;
+    }
+
     setLoadingSlots(true);
     try {
       const from = startOfDay(selectedDate);
       const to = addDays(from, 1);
       const data = await getSlots({
-        providerId,
+        providerId: provider.id,
         fromIso: from.toISOString(),
         toIso: to.toISOString(),
         viewerTz: timezone,
+        eventTypeId: selectedEventType.id,
       });
-      setSlots(data.filter((slot) => slot.isAvailable));
+      setSlots(data.filter((slot) => slot.isAvailable ?? true));
+      setSelectedSlot((prev) => (prev && data.some((slot) => slot.startUtc === prev.startUtc) ? prev : null));
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load slots');
     } finally {
       setLoadingSlots(false);
     }
-  }, [selectedDate, timezone]);
+  }, [provider.id, selectedDate, selectedEventType.id, timezone]);
 
   useEffect(() => {
-    void loadSlots();
-  }, [loadSlots]);
+    void loadBootstrap();
+  }, [loadBootstrap]);
 
-  useRealtime(providerId, loadSlots);
+  useEffect(() => {
+    if (provider.id) {
+      void loadSlots();
+    }
+  }, [provider.id, loadSlots]);
+
+  useRealtime(provider.id, loadSlots);
 
   const onConfirm = useCallback(async () => {
     if (!selectedSlot) {
@@ -83,12 +161,13 @@ function App() {
 
     setSubmitting(true);
     try {
-      await createDiscoveryBooking({
-        providerId,
-        eventTypeId: defaultEventType.id,
+      const response = await createDiscoveryBooking({
+        providerId: provider.id,
+        eventTypeId: selectedEventType.id,
         slot: selectedSlot,
         details,
       });
+      setBookingResult(response);
       setStep(5);
       setError('');
     } catch (err) {
@@ -96,27 +175,59 @@ function App() {
     } finally {
       setSubmitting(false);
     }
-  }, [details, selectedSlot]);
+  }, [details, provider.id, selectedEventType.id, selectedSlot]);
 
   return (
-    <main className="mx-auto min-h-screen max-w-5xl px-4 py-8 text-mat-ink">
+    <main className="grain-overlay mx-auto min-h-screen max-w-5xl px-4 py-8 text-mat-ink">
       <header className="mb-8">
-        <h1 className="text-3xl font-semibold">MatBoss Booking</h1>
+        <p className="text-xs uppercase tracking-[0.3em] text-mat-gold">Vienna to Every U.S. School</p>
+        <h1 className="mt-3 text-3xl font-semibold sm:text-4xl">MatBoss Booking Command Center</h1>
         <p className="mt-2 text-sm text-slate-300">
-          Vienna-origin scheduling engine for U.S. martial arts schools · Viewer timezone: {timezone}
+          Rapid discovery booking for martial arts schools. Viewer timezone: <strong>{timezone}</strong>
         </p>
-        <p className="text-xs text-slate-500">{format(new Date(), 'PPpp')} local · maintaining sub-3-minute response windows</p>
+        <p className="text-xs text-slate-500">
+          {format(new Date(), 'PPpp')} local · Vienna clock{' '}
+          {formatInTimeZone(new Date(), 'Europe/Vienna', 'PPpp')} · {daysUntilWindowClose} days left in current
+          60-day booking window.
+        </p>
+        <div className="county-orbit mt-4" aria-hidden="true">
+          <span>County Coverage Sync</span>
+        </div>
       </header>
 
-      <EventTypeCard eventType={defaultEventType} />
+      <EventTypeCard eventType={selectedEventType} />
+      <div className="mt-3 flex flex-wrap gap-2">
+        {eventTypes.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => setSelectedEventType(item)}
+            className={`rounded-full border px-3 py-1 text-xs transition ${
+              selectedEventType.id === item.id
+                ? 'border-mat-cyan bg-mat-cyan/20 text-mat-ink'
+                : 'border-white/15 text-slate-300 hover:border-mat-gold/60'
+            }`}
+          >
+            {item.name} ({item.durationMinutes}m)
+          </button>
+        ))}
+      </div>
+
       <StepIndicator step={step} />
 
       {error && <p className="mb-4 rounded-xl border border-mat-rose/40 bg-mat-rose/10 px-3 py-2 text-sm text-mat-rose">{error}</p>}
+      {bootstrapLoading ? <p className="mb-4 text-sm text-slate-400">Loading provider + event type metadata...</p> : null}
 
       {step === 1 && (
         <div className="space-y-4">
-          <CalendarGrid selected={selectedDate} onSelect={(date) => setSelectedDate(date)} />
-          <button type="button" className="btn-primary" onClick={() => setStep(2)}>
+          <CalendarGrid
+            selected={selectedDate}
+            onSelect={(date) => {
+              setSelectedDate(date);
+              setSelectedSlot(null);
+            }}
+          />
+          <button type="button" className="btn-primary" onClick={() => setStep(2)} disabled={bootstrapLoading}>
             Continue
           </button>
         </div>
@@ -164,7 +275,9 @@ function App() {
         />
       )}
 
-      {step === 5 && selectedSlot && <SuccessView details={details} slot={selectedSlot} />}
+      {step === 5 && selectedSlot ? (
+        <SuccessView details={details} slot={selectedSlot} bookingId={bookingResult?.booking.id} />
+      ) : null}
     </main>
   );
 }

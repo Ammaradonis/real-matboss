@@ -1,7 +1,10 @@
 node_modules
 dist
-.git
-*.md
 coverage
-.env
-.env.*
+.git
+.gitignore
+*.log
+npm-debug.log*
+reports
+test
+README.md

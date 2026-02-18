@@ -81,7 +81,7 @@ class ProviderSettingsDto {
 }
 
 @Controller('providers')
-class ProviderController {
+export class ProviderController {
   constructor(
     @InjectRepository(ProviderEntity)
     private readonly providerRepository: Repository<ProviderEntity>,
@@ -107,7 +107,13 @@ class ProviderController {
     @Param('tenantSlug') tenantSlug: string,
     @Param('bookingUrl') bookingUrl: string,
   ): Promise<{ tenantSlug: string; provider: ProviderEntity | null }> {
-    const provider = await this.providerRepository.findOne({ where: { bookingUrl } });
+    const provider = await this.providerRepository
+      .createQueryBuilder('p')
+      .innerJoin('tenants', 't', 't.id = p.tenant_id')
+      .where('t.slug = :tenantSlug', { tenantSlug })
+      .andWhere('p.booking_url = :bookingUrl', { bookingUrl })
+      .andWhere('p.is_active = TRUE')
+      .getOne();
     return { tenantSlug, provider };
   }
 

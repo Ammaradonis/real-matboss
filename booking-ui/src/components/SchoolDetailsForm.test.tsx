@@ -28,6 +28,7 @@ const baseValue = {
   contactName: '',
   email: '',
   phone: '',
+  preferredContactMethod: 'email' as const,
   activeStudents: 0,
   instructorCount: 1,
   currentSystem: '',
@@ -55,13 +56,12 @@ describe('SchoolDetailsForm', () => {
 
     render(<SchoolDetailsForm value={baseValue} onBack={vi.fn()} onSubmit={onSubmit} />);
 
-    await user.type(screen.getByPlaceholderText('School/Gym Name *'), 'MatBoss HQ');
-    await user.type(screen.getByPlaceholderText('City *'), 'Los Angeles');
-    const selects = screen.getAllByRole('combobox');
-    await user.selectOptions(selects[0], 'California');
-    await user.selectOptions(selects[1], 'Los Angeles County');
-    await user.type(screen.getByPlaceholderText('Contact Name *'), 'Jamie Lee');
-    await user.type(screen.getByPlaceholderText('Email *'), 'jamie@example.com');
+    await user.type(screen.getByLabelText('School or Gym Name *'), 'MatBoss HQ');
+    await user.type(screen.getByLabelText('City *'), 'Los Angeles');
+    await user.selectOptions(screen.getByLabelText('State *'), 'California');
+    await user.selectOptions(screen.getByLabelText('County *'), 'Los Angeles County');
+    await user.type(screen.getByLabelText('Contact Name *'), 'Jamie Lee');
+    await user.type(screen.getByLabelText('Email *'), 'jamie@example.com');
 
     await user.click(screen.getByRole('button', { name: 'Continue' }));
 

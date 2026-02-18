@@ -57,6 +57,10 @@ class CreateEventTypeDto {
   @IsOptional()
   @IsBoolean()
   requiresApproval?: boolean;
+
+  @IsOptional()
+  @IsString()
+  color?: string;
 }
 
 class UpdateEventTypeDto {
@@ -77,10 +81,24 @@ class UpdateEventTypeDto {
   @IsOptional()
   @IsBoolean()
   requiresApproval?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  maxAttendees?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  priceCents?: number;
+
+  @IsOptional()
+  @IsString()
+  color?: string;
 }
 
 @Controller('event-types')
-class EventTypeController {
+export class EventTypeController {
   constructor(
     @InjectRepository(EventTypeEntity)
     private readonly eventTypeRepository: Repository<EventTypeEntity>,
@@ -124,6 +142,7 @@ class EventTypeController {
         durationMinutes: input.durationMinutes,
         maxAttendees: input.maxAttendees ?? null,
         priceCents: input.priceCents ?? 0,
+        color: input.color ?? '#1f7aec',
         requiresApproval: input.requiresApproval ?? false,
       }),
     );

@@ -13,6 +13,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository, TypeOrmModule } from '@nestjs/typeorm';
+import { addDays, addHours, format } from 'date-fns';
+import { toZonedTime } from 'date-fns-tz';
 import { IsDateString, IsEmail, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { Request } from 'express';
 import { DataSource, QueryFailedError, Repository } from 'typeorm';
@@ -25,6 +27,7 @@ import {
   BookingEntity,
   BookingEventEntity,
   BookingStatus,
+  BlackoutDateEntity,
   DiscoveryCallEntity,
   EventTypeEntity,
   ProviderEntity,
@@ -107,7 +110,7 @@ class CancelBookingDto {
 }
 
 @Controller('bookings')
-class BookingController {
+export class BookingController {
   constructor(
     @InjectDataSource()
     private readonly dataSource: DataSource,
@@ -121,6 +124,8 @@ class BookingController {
     private readonly providerRepository: Repository<ProviderEntity>,
     @InjectRepository(EventTypeEntity)
     private readonly eventTypeRepository: Repository<EventTypeEntity>,
+    @InjectRepository(BlackoutDateEntity)
+    private readonly blackoutRepository: Repository<BlackoutDateEntity>,
     private readonly countiesService: UsCountiesService,
     private readonly notificationService: NotificationService,
     private readonly bookingGateway: BookingGateway,
@@ -139,8 +144,8 @@ class BookingController {
   ): Promise<{ booking: BookingEntity; discoveryId: string }> {
     const tenantId = resolveTenantId(req);
 
-    if (!this.countiesService.isCountyKnown(input.county)) {
-      throw new ConflictException('Invalid county provided');
+    if (!this.countiesService.isCountyKnownInState(input.county, input.state)) {
+      throw new ConflictException('Invalid county/state combination provided');
     }
 
     const booking = await this.createBookingTransaction(tenantId, input, req, true);
@@ -204,6 +209,18 @@ class BookingController {
       }),
     );
 
+    await this.notificationService.queueEmail({
+      tenantId,
+      bookingId: saved.id,
+      recipient: saved.customerEmail,
+      templateKey: 'booking-confirmed',
+      payload: {
+        bookingId: saved.id,
+        startTs: saved.startTs,
+        endTs: saved.endTs,
+      },
+    });
+
     this.bookingGateway.emitBookingConfirmed(saved.providerId, saved);
     return saved;
   }
@@ -252,6 +269,19 @@ class BookingController {
       }),
     );
 
+    await this.notificationService.queueEmail({
+      tenantId,
+      bookingId: updated.id,
+      recipient: updated.customerEmail,
+      templateKey: 'booking-cancelled',
+      payload: {
+        bookingId: updated.id,
+        startTs: updated.startTs,
+        endTs: updated.endTs,
+        reason: input.reason ?? null,
+      },
+    });
+
     this.bookingGateway.emitBookingCancelled(updated.providerId, updated);
     return updated;
   }
@@ -276,6 +306,47 @@ class BookingController {
       throw new NotFoundException('Event type not found');
     }
 
+    const startTs = new Date(input.startTs);
+    const endTs = new Date(input.endTs);
+    if (Number.isNaN(startTs.getTime()) || Number.isNaN(endTs.getTime()) || endTs <= startTs) {
+      throw new ConflictException('Invalid booking time range');
+    }
+
+    const requestedDurationMinutes = Math.round((endTs.getTime() - startTs.getTime()) / 60_000);
+    if (requestedDurationMinutes !== eventType.durationMinutes) {
+      throw new ConflictException(
+        `Time range must match event duration (${eventType.durationMinutes} minutes)`,
+      );
+    }
+
+    const minimumNoticeAt = addHours(new Date(), provider.minimumNoticeHours);
+    if (startTs < minimumNoticeAt) {
+      throw new ConflictException(
+        `Minimum notice is ${provider.minimumNoticeHours} hour(s) for this provider`,
+      );
+    }
+
+    const maximumAdvanceAt = addDays(new Date(), provider.maximumAdvanceDays);
+    if (startTs > maximumAdvanceAt) {
+      throw new ConflictException(
+        `Maximum advance window is ${provider.maximumAdvanceDays} day(s) for this provider`,
+      );
+    }
+
+    const providerLocalDate = format(toZonedTime(startTs, provider.timeZone), 'yyyy-MM-dd');
+    const blackout = await this.blackoutRepository.findOne({
+      where: { tenantId, providerId: provider.id, date: providerLocalDate },
+    });
+    if (blackout) {
+      throw new ConflictException(
+        blackout.reason
+          ? `Provider unavailable (${blackout.reason})`
+          : 'Provider unavailable on selected date',
+      );
+    }
+
+    const initialStatus = eventType.requiresApproval ? BookingStatus.PENDING : BookingStatus.CONFIRMED;
+
     try {
       const created = await this.dataSource.transaction('SERIALIZABLE', async (manager) => {
         const bookingRepo = manager.getRepository(BookingEntity);
@@ -288,9 +359,9 @@ class BookingController {
           customerName: input.customerName,
           customerEmail: input.customerEmail,
           customerPhone: input.customerPhone ?? null,
-          startTs: new Date(input.startTs),
-          endTs: new Date(input.endTs),
-          status: BookingStatus.CONFIRMED,
+          startTs,
+          endTs,
+          status: initialStatus,
         });
 
         const saved = await bookingRepo.save(entity);
@@ -319,6 +390,20 @@ class BookingController {
             bookingId: created.id,
             startTs: created.startTs,
             endTs: created.endTs,
+          },
+        });
+      } else {
+        await this.notificationService.queueEmail({
+          tenantId,
+          bookingId: created.id,
+          recipient: created.customerEmail,
+          templateKey:
+            initialStatus === BookingStatus.PENDING ? 'booking-pending' : 'booking-confirmation',
+          payload: {
+            bookingId: created.id,
+            startTs: created.startTs,
+            endTs: created.endTs,
+            status: created.status,
           },
         });
       }
@@ -355,6 +440,7 @@ class BookingController {
       DiscoveryCallEntity,
       ProviderEntity,
       EventTypeEntity,
+      BlackoutDateEntity,
     ]),
   ],
   controllers: [BookingController],

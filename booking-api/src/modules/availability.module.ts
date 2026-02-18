@@ -13,6 +13,7 @@ import {
 import { InjectRepository, TypeOrmModule } from '@nestjs/typeorm';
 import {
   addDays,
+  addHours,
   addMinutes,
   format,
   isAfter,
@@ -31,8 +32,10 @@ import { resolveTenantId } from '../common/tenant-context';
 import {
   AvailabilityOverrideEntity,
   AvailabilityRuleEntity,
+  BlackoutDateEntity,
   BookingEntity,
   BookingStatus,
+  EventTypeEntity,
   OverrideKind,
   ProviderEntity,
 } from '../database/entities';
@@ -93,6 +96,10 @@ export class AvailabilityController {
     private readonly overrideRepository: Repository<AvailabilityOverrideEntity>,
     @InjectRepository(BookingEntity)
     private readonly bookingRepository: Repository<BookingEntity>,
+    @InjectRepository(EventTypeEntity)
+    private readonly eventTypeRepository: Repository<EventTypeEntity>,
+    @InjectRepository(BlackoutDateEntity)
+    private readonly blackoutRepository: Repository<BlackoutDateEntity>,
   ) {}
 
   @Get()
@@ -102,6 +109,7 @@ export class AvailabilityController {
     @Query('to') to: string,
     @Query('viewerTz') viewerTz = 'UTC',
     @Req() req: Request,
+    @Query('eventTypeId') eventTypeId?: string,
   ): Promise<{ slots: SlotDto[] }> {
     const tenantId = resolveTenantId(req);
     const provider = await this.providerRepository.findOne({ where: { id: providerId, tenantId } });
@@ -111,6 +119,22 @@ export class AvailabilityController {
 
     const fromUtc = parseISO(from);
     const toUtc = parseISO(to);
+    if (Number.isNaN(fromUtc.getTime()) || Number.isNaN(toUtc.getTime()) || toUtc <= fromUtc) {
+      return { slots: [] };
+    }
+
+    const selectedEventType = eventTypeId
+      ? await this.eventTypeRepository.findOne({
+          where: { id: eventTypeId, tenantId, providerId, isActive: true },
+        })
+      : null;
+    if (eventTypeId && !selectedEventType) {
+      return { slots: [] };
+    }
+
+    const slotDurationMinutes = selectedEventType?.durationMinutes ?? 30;
+    const minimumNoticeAt = addHours(new Date(), provider.minimumNoticeHours);
+    const maximumAdvanceAt = addDays(new Date(), provider.maximumAdvanceDays);
 
     const rules = await this.ruleRepository.find({ where: { tenantId, providerId } });
     const overrides = await this.overrideRepository
@@ -120,6 +144,16 @@ export class AvailabilityController {
       .andWhere('o.start_ts < :toUtc', { toUtc: toUtc.toISOString() })
       .andWhere('o.end_ts > :fromUtc', { fromUtc: fromUtc.toISOString() })
       .getMany();
+    const blackoutFrom = format(toZonedTime(fromUtc, provider.timeZone), 'yyyy-MM-dd');
+    const blackoutTo = format(toZonedTime(toUtc, provider.timeZone), 'yyyy-MM-dd');
+    const blackouts = await this.blackoutRepository
+      .createQueryBuilder('b')
+      .where('b.tenant_id = :tenantId', { tenantId })
+      .andWhere('b.provider_id = :providerId', { providerId })
+      .andWhere('b.date >= :blackoutFrom', { blackoutFrom })
+      .andWhere('b.date <= :blackoutTo', { blackoutTo })
+      .getMany();
+    const blackoutDates = new Set(blackouts.map((blackout) => blackout.date));
 
     const bookings = await this.bookingRepository
       .createQueryBuilder('b')
@@ -142,20 +176,31 @@ export class AvailabilityController {
       inProviderTz = addDays(inProviderTz, 1)
     ) {
       const dow = inProviderTz.getDay();
-      const dayRules = rules.filter((rule) => rule.dayOfWeek === dow);
+      const datePart = format(inProviderTz, 'yyyy-MM-dd');
+      if (blackoutDates.has(datePart)) {
+        continue;
+      }
+
+      const dayRules = rules.filter(
+        (rule) =>
+          rule.dayOfWeek === dow &&
+          (!eventTypeId || rule.eventTypeId === null || rule.eventTypeId === eventTypeId),
+      );
 
       for (const rule of dayRules) {
-        const datePart = format(inProviderTz, 'yyyy-MM-dd');
         const blockStart = fromZonedTime(`${datePart}T${rule.startTime}`, rule.timeZone);
         const blockEnd = fromZonedTime(`${datePart}T${rule.endTime}`, rule.timeZone);
 
         for (
           let slotStart = blockStart;
           isBefore(slotStart, blockEnd);
-          slotStart = addMinutes(slotStart, 30)
+          slotStart = addMinutes(slotStart, slotDurationMinutes)
         ) {
-          const slotEnd = addMinutes(slotStart, 30);
+          const slotEnd = addMinutes(slotStart, slotDurationMinutes);
           if (isAfter(slotEnd, toUtc) || isBefore(slotStart, fromUtc)) {
+            continue;
+          }
+          if (slotStart < minimumNoticeAt || slotStart > maximumAdvanceAt) {
             continue;
           }
 
@@ -171,7 +216,10 @@ export class AvailabilityController {
           }
 
           const relevantOverrides = overrides.filter(
-            (override) => slotStart < override.endTs && slotEnd > override.startTs,
+            (override) =>
+              slotStart < override.endTs &&
+              slotEnd > override.startTs &&
+              (!eventTypeId || override.eventTypeId === null || override.eventTypeId === eventTypeId),
           );
           if (relevantOverrides.some((override) => override.kind === OverrideKind.BLOCKED)) {
             continue;
@@ -187,7 +235,14 @@ export class AvailabilityController {
       }
     }
 
-    for (const override of overrides.filter((override) => override.kind === OverrideKind.AVAILABLE)) {
+    for (const override of overrides.filter(
+      (item) =>
+        item.kind === OverrideKind.AVAILABLE &&
+        (!eventTypeId || item.eventTypeId === null || item.eventTypeId === eventTypeId),
+    )) {
+      if (override.startTs < minimumNoticeAt || override.startTs > maximumAdvanceAt) {
+        continue;
+      }
       raw.push({
         startUtc: override.startTs.toISOString(),
         endUtc: override.endTs.toISOString(),
@@ -238,6 +293,8 @@ export class AvailabilityController {
       AvailabilityRuleEntity,
       AvailabilityOverrideEntity,
       BookingEntity,
+      EventTypeEntity,
+      BlackoutDateEntity,
     ]),
   ],
   controllers: [AvailabilityController],

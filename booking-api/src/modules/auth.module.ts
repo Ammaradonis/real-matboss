@@ -62,7 +62,7 @@ class ValidateApiTokenDto {
 }
 
 @Controller('auth')
-class AuthController {
+export class AuthController {
   constructor(
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
@@ -118,18 +118,21 @@ class AuthController {
 
   @Post('refresh')
   async refresh(@Body() input: RefreshDto): Promise<unknown> {
-    const rows = await this.refreshTokenRepository.find({
-      where: {},
-      order: { createdAt: 'DESC' },
-      take: 100,
-    });
+    const rows = await this.refreshTokenRepository
+      .createQueryBuilder('rt')
+      .where('rt.revoked_at IS NULL')
+      .andWhere('rt.expires_at > NOW()')
+      .orderBy('rt.created_at', 'DESC')
+      .getMany();
 
     const activeMatch = await this.findActiveRefresh(rows, input.refreshToken);
     if (!activeMatch) {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    const user = await this.userRepository.findOne({ where: { id: activeMatch.userId } });
+    const user = await this.userRepository.findOne({
+      where: { id: activeMatch.userId, isActive: true },
+    });
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
@@ -142,11 +145,12 @@ class AuthController {
 
   @Post('logout')
   async logout(@Body() input: LogoutDto): Promise<{ revoked: boolean }> {
-    const rows = await this.refreshTokenRepository.find({
-      where: {},
-      order: { createdAt: 'DESC' },
-      take: 100,
-    });
+    const rows = await this.refreshTokenRepository
+      .createQueryBuilder('rt')
+      .where('rt.revoked_at IS NULL')
+      .andWhere('rt.expires_at > NOW()')
+      .orderBy('rt.created_at', 'DESC')
+      .getMany();
 
     const activeMatch = await this.findActiveRefresh(rows, input.refreshToken);
     if (activeMatch) {
