@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MatBoss | Vienna to Every Dojo</title>
+  <meta name="description" content="Origin story page for MatBoss and Vienna-to-U.S. operating model." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Sora:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/css/main.css" />
+</head>
+<body>
+  <div class="scroll-meter" aria-hidden="true"></div>
+  <main>
+    <header class="site-header" data-site-header></header>
+
+    <section class="hero reveal">
+      <article class="panel hero-copy">
+        <h2>Vienna Origin, U.S. Execution</h2>
+        <p>
+          Built by Ammar Alkheder, MatBoss treats timezone spread as an operational edge. The objective is simple:
+          keep response speed disciplined when competitors let urgency decay.
+        </p>
+        <blockquote style="margin-top:1rem;border-left:3px solid var(--brand-a);padding-left:.8rem">
+          <p style="font-size:1.2rem;margin:0">"من فيينا، إلى كل مدرسة قتالية تبحث عن نظام يَستجيب بسرعة."</p>
+          <p class="lead">“From Vienna to every martial arts school that demands fast response systems.”</p>
+        </blockquote>
+      </article>
+
+      <aside class="panel">
+        <div class="globe-wrap">
+          <canvas id="vienna-globe" class="globe-canvas" aria-label="Vienna to U.S. county globe"></canvas>
+        </div>
+        <p class="footer-note">Active schools tracked: <strong data-active-schools>286</strong></p>
+      </aside>
+    </section>
+
+    <section class="section reveal">
+      <h2>Strategic Timeline (2015–2024)</h2>
+      <div class="timeline" data-vienna-timeline></div>
+    </section>
+
+    <section class="section dual reveal">
+      <article class="panel">
+        <h2>Philosophy Cards</h2>
+        <article class="mini-card" data-philosophy>
+          <h3>Speed with Context</h3>
+          <p data-philosophy-body style="display:none">Fast response only works when owner intent, budget, timeline, and scheduling pain are visible in one view.</p>
+        </article>
+        <article class="mini-card" data-philosophy>
+          <h3>Local Reality First</h3>
+          <p data-philosophy-body style="display:none">County-level variation changes class demand and contact preference; routing must respect those patterns.</p>
+        </article>
+        <article class="mini-card" data-philosophy>
+          <h3>System over Hype</h3>
+          <p data-philosophy-body style="display:none">Claims mean nothing without instrumentation. Latency, follow-up rate, and booking conversions stay observable.</p>
+        </article>
+      </article>
+
+      <article class="panel">
+        <h2>Testimonials</h2>
+        <ul class="log-list">
+          <li>"We stopped guessing who to call first. The queue is finally prioritized." — Arizona owner</li>
+          <li>"Night inquiries no longer disappear by morning." — Florida operator</li>
+          <li>"Our callback rhythm became measurable, not chaotic." — Texas gym manager</li>
+        </ul>
+      </article>
+    </section>
+
+    <section class="section dual reveal">
+      <article class="panel">
+        <h2>Vienna Studio Feed Placeholder</h2>
+        <div style="min-height:180px;border:1px dashed var(--line);border-radius:.9rem;display:grid;place-items:center;color:var(--ink-2)">
+          Live operations feed endpoint ready for secure stream integration.
+        </div>
+      </article>
+
+      <article class="panel">
+        <h2>Manifesto Network</h2>
+        <svg viewBox="0 0 560 190" role="img" aria-label="Manifesto network visualization" data-manifesto-network style="width:100%;margin-bottom:.8rem"></svg>
+        <ul class="log-list" data-manifesto></ul>
+      </article>
+    </section>
+
+    <section class="section reveal">
+      <article class="panel">
+        <h2>Build Your County Rollout</h2>
+        <form class="cta-grid" data-vienna-cta>
+          <label class="field">Owner Name
+            <input type="text" name="owner" placeholder="Owner name" />
+          </label>
+          <label class="field">Email
+            <input type="email" name="email" placeholder="owner@school.com" />
+          </label>
+          <label class="field">State
+            <select name="state" data-county-state data-county-target="vienna"><option value="">Select state</option></select>
+          </label>
+          <label class="field">County
+            <select name="county" data-county="vienna"><option value="">Select county</option></select>
+          </label>
+          <button type="submit">Draft Rollout Brief</button>
+        </form>
+        <p class="footer-note" data-vienna-result>Waiting for owner + location details.</p>
+      </article>
+    </section>
+  </main>
+
+  <script type="module" src="/assets/js/vienna.js"></script>
+</body>
+</html>

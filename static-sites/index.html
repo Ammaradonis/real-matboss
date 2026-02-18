@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MatBoss | Frontline Landing</title>
+  <meta name="description" content="MatBoss landing page: Vienna-to-U.S. lead response platform for martial arts schools." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Sora:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/css/main.css" />
+</head>
+<body>
+  <div class="scroll-meter" aria-hidden="true"></div>
+  <main>
+    <header class="site-header" data-site-header></header>
+
+    <section class="hero" data-swipe-nav>
+      <article class="panel hero-copy reveal">
+        <h2>Choose Speed. <br />Leave Delay Behind.</h2>
+        <p>
+          MatBoss operates as a Vienna-to-U.S. response relay for martial arts schools. We frame the real split clearly:
+          modern lead capture discipline versus slow handoffs that lose momentum.
+        </p>
+        <div class="badge-row">
+          <span class="badge win">Us: Sub-3 minute response discipline</span>
+          <span class="badge loss">Them: Slow legacy follow-up loops</span>
+          <span class="badge">4,500-mile operational relay</span>
+        </div>
+        <div class="section" style="margin-top:1rem">
+          <h2 style="font-size:1.65rem;margin-bottom:.4rem" data-hero-mode>Day Shift: U.S. Lead Surge</h2>
+          <p class="lead" data-mode-detail></p>
+        </div>
+      </article>
+
+      <aside class="panel reveal">
+        <div class="time-paradox">
+          <article class="time-card">
+            <h3>Your Local Time</h3>
+            <p data-local-time>--</p>
+          </article>
+          <article class="time-card">
+            <h3>Vienna Operations Time</h3>
+            <p data-vienna-time>--</p>
+          </article>
+        </div>
+
+        <div class="globe-wrap section" style="margin-top:.8rem">
+          <canvas id="landing-globe" class="globe-canvas" aria-label="County coverage globe"></canvas>
+          <p class="footer-note">3D county coverage rendering from the U.S. county dataset.</p>
+        </div>
+      </aside>
+    </section>
+
+    <section class="section reveal">
+      <h2>Missed Lead Pressure Test</h2>
+      <p class="lead">Parallax cards show the common delay pattern schools report when legacy systems fragment context and follow-up ownership.</p>
+      <div class="triple" style="margin-top:.8rem">
+        <article class="panel" data-parallax-card>
+          <h3>06:41 AM Inquiry</h3>
+          <p>Parent asks about beginner class; response waits behind manual backlog.</p>
+        </article>
+        <article class="panel" data-parallax-card>
+          <h3>11:58 AM Drop-Off</h3>
+          <p>Prospect goes cold after hours of silence and unclear next steps.</p>
+        </article>
+        <article class="panel" data-parallax-card>
+          <h3>08:14 PM Lost Intent</h3>
+          <p>Late-night lead receives no immediate routing and books elsewhere.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section dual reveal">
+      <article class="panel">
+        <h2>4,500 Mile Promise</h2>
+        <p class="lead">
+          Distance is treated as an execution advantage, not a delay excuse. Vienna operating hours extend coverage while U.S.
+          teams are offline.
+        </p>
+        <ul class="timeline" style="margin-top:.8rem">
+          <li class="timeline-item">Lead event captured and scored in seconds.</li>
+          <li class="timeline-item">Response channel selected by intent and urgency.</li>
+          <li class="timeline-item">Owner context pack delivered before follow-up call.</li>
+        </ul>
+      </article>
+
+      <article class="panel">
+        <h2>Claim Your County</h2>
+        <p class="lead">Open the full lead-capture modal to route your county into the Vienna response relay.</p>
+        <button type="button" class="secondary" data-open-lead-modal style="margin-top:.7rem">Open Lead Capture Modal</button>
+        <form class="cta-grid single" data-lead-form>
+          <label class="field">Owner Name
+            <input type="text" name="owner" placeholder="Ammar Alkheder" />
+          </label>
+          <label class="field">Email
+            <input type="email" name="email" placeholder="owner@school.com" />
+          </label>
+          <label class="field">State
+            <select name="state" data-county-state data-county-target="landing"><option value="">Select state</option></select>
+          </label>
+          <label class="field">County
+            <select name="county" data-county="landing"><option value="">Select county</option></select>
+          </label>
+          <button type="submit">Activate Response Map</button>
+        </form>
+        <p class="footer-note" data-lead-result>Routing standby: choose your county to begin.</p>
+      </article>
+    </section>
+
+    <section class="section reveal">
+      <article class="panel">
+        <h2>Live Notification Loop</h2>
+        <p class="lead" data-chaos-pill>Live pulse initializing...</p>
+      </article>
+    </section>
+
+    <p class="footer-note">
+      Competitive references on this page are directional and illustrative. Validate against your own funnel metrics before making operational changes.
+    </p>
+  </main>
+
+  <div class="modal-backdrop" data-lead-modal>
+    <article class="modal">
+      <h3>Lead Capture Modal</h3>
+      <p class="lead">Claim your county and route it to a response cell built for sub-3-minute first touch.</p>
+      <form class="cta-grid" data-lead-modal-form>
+        <label class="field">Owner Name
+          <input type="text" name="owner" placeholder="Owner name" />
+        </label>
+        <label class="field">Email
+          <input type="email" name="email" placeholder="owner@school.com" />
+        </label>
+        <label class="field">Phone
+          <input type="tel" name="phone" placeholder="+1 602 555 0101" />
+        </label>
+        <label class="field">State
+          <select name="state" data-county-state data-county-target="landingmodal"><option value="">Select state</option></select>
+        </label>
+        <label class="field">County
+          <select name="county" data-county="landingmodal"><option value="">Select county</option></select>
+        </label>
+        <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+          <button type="submit">Activate County Strike Plan</button>
+          <button type="button" class="secondary" data-close-lead-modal>Close</button>
+        </div>
+      </form>
+      <p class="footer-note" data-lead-modal-result>Waiting for complete details.</p>
+    </article>
+  </div>
+
+  <script type="module" src="/assets/js/landing.js"></script>
+</body>
+</html>

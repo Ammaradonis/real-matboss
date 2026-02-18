@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MatBoss | Live Proof</title>
+  <meta name="description" content="Live Proof page for MatBoss system performance and ROI modeling." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Sora:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/css/main.css" />
+</head>
+<body>
+  <div class="scroll-meter" aria-hidden="true"></div>
+  <main>
+    <header class="site-header" data-site-header></header>
+
+    <section class="section reveal">
+      <h2>Live Performance Split</h2>
+      <p class="lead">Side-by-side metrics compare fast response execution against delayed handoff models that commonly leak revenue.</p>
+      <div class="metric-grid" data-live-kpi></div>
+    </section>
+
+    <section class="section dual reveal">
+      <article class="panel">
+        <h2>Before vs After Revenue Lens</h2>
+        <p class="lead">Drag the slider to compare projected legacy output with MatBoss-assisted response discipline.</p>
+        <div class="slider-wrap" style="position:relative;border:1px solid var(--line);border-radius:.9rem;overflow:hidden;margin-top:.8rem">
+          <div style="padding:1rem;background:rgba(255,92,112,.18)">
+            <strong>Them: Delayed follow-up pattern</strong>
+            <p>Unqualified backlog and manual callbacks increase no-response risk.</p>
+          </div>
+          <div data-split-fill id="split-fill" style="position:absolute;inset:0 auto 0 0;width:50%;overflow:hidden">
+            <div style="height:100%;padding:1rem;background:rgba(70,216,137,.22);width:200%">
+              <strong>Us: Routed response pattern</strong>
+              <p>Immediate triage + contextual handoff keeps intent alive through booking.</p>
+            </div>
+          </div>
+        </div>
+        <input data-split-range type="range" min="5" max="95" value="50" style="margin-top:.8rem;width:100%" />
+      </article>
+
+      <article class="panel">
+        <h2>ROI Calculator</h2>
+        <p class="lead">Model your monthly upside from response-time compression and lead rescue.</p>
+
+        <div class="range-row"><label>Leads/month</label><output>120</output></div>
+        <input data-roi-input type="range" min="20" max="800" value="120" name="leads" />
+
+        <div class="range-row"><label>Show rate %</label><output>58</output></div>
+        <input data-roi-input type="range" min="10" max="95" value="58" name="showRate" />
+
+        <div class="range-row"><label>Close rate %</label><output>31</output></div>
+        <input data-roi-input type="range" min="5" max="80" value="31" name="closeRate" />
+
+        <div class="range-row"><label>Average deal value ($)</label><output>790</output></div>
+        <input data-roi-input type="range" min="80" max="3000" value="790" name="avgValue" />
+
+        <div class="range-row"><label>Delay-attributed loss %</label><output>35</output></div>
+        <input data-roi-input type="range" min="5" max="80" value="35" name="delayLoss" />
+
+        <h3 style="margin:.8rem 0 0;font-size:1.8rem;color:var(--win)" data-roi-output>$0</h3>
+        <p class="footer-note" data-roi-breakdown></p>
+      </article>
+    </section>
+
+    <section class="section dual reveal">
+      <article class="panel">
+        <h2>County Clustering Map</h2>
+        <p class="lead">D3 cluster view renders county-level coverage intensity from the shared county dataset.</p>
+        <form class="cta-grid" data-live-filter>
+          <label class="field">School Type
+            <select name="type">
+              <option value="">All types</option>
+              <option value="kids">Kids Program</option>
+              <option value="adult">Adult Program</option>
+              <option value="mixed">Mixed Program</option>
+            </select>
+          </label>
+          <label class="field">School Size
+            <select name="size">
+              <option value="">All sizes</option>
+              <option value="small">0-99 students</option>
+              <option value="mid">100-249 students</option>
+              <option value="large">250+ students</option>
+            </select>
+          </label>
+          <label class="field">State
+            <select name="state" data-county-state data-county-target="livefilter"><option value="">Select state</option></select>
+          </label>
+          <label class="field">County
+            <select name="county" data-county="livefilter"><option value="">Select county</option></select>
+          </label>
+        </form>
+        <p class="footer-note" data-live-filter-result>Filters inactive. Showing full county model.</p>
+        <div class="map-wrap"><svg id="live-proof-map" role="img" aria-label="County cluster map"></svg></div>
+      </article>
+
+      <article class="panel">
+        <h2>Video Mosaic + Ticker</h2>
+        <p class="lead">Autoplay snippets align with county-level campaign pressure.</p>
+        <div class="card-carousel" aria-label="Video mosaic">
+          <video class="mini-card" autoplay muted loop playsinline src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"></video>
+          <video class="mini-card" autoplay muted loop playsinline src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"></video>
+          <video class="mini-card" autoplay muted loop playsinline src="https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"></video>
+        </div>
+        <p style="margin-top:.75rem" data-results-ticker></p>
+      </article>
+    </section>
+
+    <section class="section reveal">
+      <article class="panel">
+        <h2>Call Me Back</h2>
+        <form class="cta-grid" data-live-cta>
+          <label class="field">Phone
+            <input type="tel" name="phone" placeholder="+1 602 555 0101" />
+          </label>
+          <label class="field">Preferred Time Window
+            <select name="preferred">
+              <option value="">Select window</option>
+              <option>Today: 08:00-10:00</option>
+              <option>Today: 12:00-14:00</option>
+              <option>Today: 16:00-18:00</option>
+              <option>Tomorrow: 08:00-10:00</option>
+            </select>
+          </label>
+          <label class="field">State
+            <select data-county-state data-county-target="live"><option value="">Select state</option></select>
+          </label>
+          <label class="field">County
+            <select data-county="live"><option value="">Select county</option></select>
+          </label>
+          <button type="submit">Queue Strategic Callback</button>
+        </form>
+        <p class="footer-note" data-live-result>Awaiting callback request details.</p>
+      </article>
+    </section>
+  </main>
+
+  <script type="module" src="/assets/js/live-proof.js"></script>
+</body>
+</html>

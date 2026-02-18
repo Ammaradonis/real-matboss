@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MatBoss | The Ghosts</title>
+  <meta name="description" content="The Ghosts page visualizing missed-lead cost and response-time consequences." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Sora:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/css/main.css" />
+</head>
+<body>
+  <div class="scroll-meter" aria-hidden="true"></div>
+  <main>
+    <header class="site-header" data-site-header></header>
+
+    <section class="section reveal">
+      <h2>Cost of Delayed Response</h2>
+      <p class="lead">This page dramatizes missed-opportunity patterns schools report when response workflows are slow, fragmented, or unclear.</p>
+      <article class="panel">
+        <div class="loss-counter" data-loss-counter>$128,430</div>
+        <p class="lead">Estimated monthly opportunity loss accumulating across delayed pipelines.</p>
+      </article>
+    </section>
+
+    <section class="section dual reveal">
+      <article class="panel">
+        <h2>Loss Calculator</h2>
+        <div class="cta-grid single">
+          <label class="field">Leads per month
+            <input data-loss-input type="number" name="ghostLeads" value="120" min="1" />
+          </label>
+          <label class="field">Average response delay score (0-100)
+            <input data-loss-input type="number" name="ghostResponse" value="44" min="0" max="100" />
+          </label>
+          <label class="field">Average student value ($)
+            <input data-loss-input type="number" name="ghostValue" value="790" min="10" />
+          </label>
+        </div>
+        <p class="footer-note" data-loss-output></p>
+      </article>
+
+      <article class="panel">
+        <h2>Response Time Comparison</h2>
+        <table class="comparison-table" aria-label="Response time comparison table">
+          <thead><tr><th>Scenario</th><th>Median Reply</th><th>Outcome Direction</th></tr></thead>
+          <tbody>
+            <tr><td>Manual inbox queue</td><td class="loss">42m 11s</td><td class="loss">Intent drop risk high</td></tr>
+            <tr><td>Legacy SaaS with partial automation</td><td class="loss">19m 36s</td><td class="loss">Inconsistent conversion</td></tr>
+            <tr><td>MatBoss routed relay</td><td class="win">2m 11s</td><td class="win">Higher booking velocity</td></tr>
+          </tbody>
+        </table>
+      </article>
+    </section>
+
+    <section class="section dual reveal">
+      <article class="panel">
+        <h2>One Week Timeline</h2>
+        <div class="switcher" role="tablist" aria-label="Timeline mode">
+          <button class="active" data-mode="legacy" role="tab">Current</button>
+          <button data-mode="competitor" role="tab">Competitor</button>
+          <button data-mode="matboss" role="tab">MatBoss</button>
+        </div>
+        <ul class="timeline" data-week-timeline></ul>
+      </article>
+
+      <article class="panel">
+        <h2>Anonymized Inquiry Log</h2>
+        <ul class="log-list" data-inquiry-log></ul>
+      </article>
+    </section>
+
+    <section class="section reveal">
+      <article class="panel">
+        <h2>Isometric Dojo Cutaway</h2>
+        <svg viewBox="0 0 820 260" role="img" aria-label="Dojo cutaway">
+          <rect x="20" y="30" width="780" height="200" fill="rgba(255,255,255,.04)" stroke="rgba(255,255,255,.15)" rx="18" />
+          <rect x="60" y="70" width="170" height="130" fill="rgba(79,217,255,.18)" />
+          <rect x="250" y="70" width="170" height="130" fill="rgba(255,92,112,.18)" />
+          <rect x="440" y="70" width="170" height="130" fill="rgba(255,140,66,.18)" />
+          <rect x="630" y="70" width="130" height="130" fill="rgba(70,216,137,.2)" />
+          <text x="78" y="94" fill="#f8f0dd">Front Desk</text>
+          <text x="270" y="94" fill="#f8f0dd">Inbox Queue</text>
+          <text x="460" y="94" fill="#f8f0dd">Callback Stage</text>
+          <text x="648" y="94" fill="#f8f0dd">Booked</text>
+        </svg>
+        <div class="badge-row" style="margin-top:.7rem">
+          <button class="secondary" data-ghost="backlog">Backlog Phantom</button>
+          <button class="secondary" data-ghost="silent">Silent Follow-Up Ghost</button>
+          <button class="secondary" data-ghost="schedule">Schedule Drift Specter</button>
+          <button class="secondary" data-ghost="data">Fragmented Data Wraith</button>
+        </div>
+      </article>
+    </section>
+
+    <section class="section dual reveal">
+      <article class="panel">
+        <h2>Before / After Split</h2>
+        <div style="position:relative;border:1px solid var(--line);border-radius:.9rem;overflow:hidden">
+          <div style="padding:1rem;background:rgba(255,92,112,.17)">
+            <h3>Delayed System</h3>
+            <p>Lead context fragmented, no consistent follow-up ownership.</p>
+          </div>
+          <div data-ghost-mask style="position:absolute;inset:0 auto 0 0;width:50%;overflow:hidden">
+            <div style="height:100%;padding:1rem;background:rgba(70,216,137,.22);width:200%">
+              <h3>Routed System</h3>
+              <p>Immediate triage, context-rich handoff, and predictable booking flow.</p>
+            </div>
+          </div>
+        </div>
+        <input data-ghost-split type="range" min="5" max="95" value="50" style="width:100%;margin-top:.8rem" />
+      </article>
+
+      <article class="panel">
+        <h2>Your Week Without MatBoss</h2>
+        <div data-accordion>
+          <button class="secondary" type="button">Monday</button><div style="display:none">New inquiries queue but callback ownership remains unclear.</div>
+          <button class="secondary" type="button">Tuesday</button><div style="display:none">Prospects request details; response timing drifts wider.</div>
+          <button class="secondary" type="button">Wednesday</button><div style="display:none">Follow-up context gets split across tools and tabs.</div>
+          <button class="secondary" type="button">Thursday</button><div style="display:none">Qualified leads cool down before booking decision.</div>
+          <button class="secondary" type="button">Friday</button><div style="display:none">Owner team closes week with incomplete lead visibility.</div>
+          <button class="secondary" type="button">Saturday</button><div style="display:none">Weekend messages wait for manual processing.</div>
+          <button class="secondary" type="button">Sunday</button><div style="display:none">Pipeline restarts Monday with fresh backlog pressure.</div>
+        </div>
+      </article>
+    </section>
+
+    <section class="section reveal">
+      <article class="panel">
+        <h2>Take Back Control</h2>
+        <form class="cta-grid">
+          <label class="field">Owner Name<input type="text" placeholder="Owner name" /></label>
+          <label class="field">Email<input type="email" placeholder="owner@school.com" /></label>
+          <label class="field">State<select data-county-state data-county-target="ghost"><option value="">Select state</option></select></label>
+          <label class="field">County<select data-county="ghost"><option value="">Select county</option></select></label>
+          <button type="button" class="warn">Start Recovery Plan</button>
+        </form>
+      </article>
+    </section>
+  </main>
+
+  <div class="modal-backdrop" data-ghost-modal>
+    <article class="modal">
+      <h3 data-modal-title>Ghost Profile</h3>
+      <p data-modal-body></p>
+      <button type="button" data-close-modal>Close</button>
+    </article>
+  </div>
+
+  <script type="module" src="/assets/js/the-ghosts.js"></script>
+</body>
+</html>

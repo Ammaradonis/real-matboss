@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MatBoss | The System</title>
+  <meta name="description" content="The System page explaining MatBoss architecture and operating model." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Sora:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/css/main.css" />
+</head>
+<body>
+  <div class="scroll-meter" aria-hidden="true"></div>
+  <main>
+    <header class="site-header" data-site-header></header>
+
+    <section class="section reveal">
+      <h2>How the System Operates</h2>
+      <div class="switcher" aria-label="System explanation mode">
+        <button class="active" data-system-mode="plain">Plain English</button>
+        <button data-system-mode="technical">Technical Truth</button>
+      </div>
+      <article class="panel" style="margin-top:.8rem">
+        <p class="lead" data-system-copy>
+          MatBoss listens, qualifies intent, and routes owner-ready leads in under three minutes. Your team sees context instantly, not hours later.
+        </p>
+      </article>
+    </section>
+
+    <section class="section dual reveal">
+      <article class="panel">
+        <h2>School-Type Journey Map</h2>
+        <div class="badge-row">
+          <button class="secondary active" data-school-type="kids">Kids Focus</button>
+          <button class="secondary" data-school-type="adult">Adult Focus</button>
+          <button class="secondary" data-school-type="mixed">Mixed</button>
+          <button class="secondary" data-school-type="traditional">Traditional</button>
+        </div>
+        <ul class="timeline" data-journey-map></ul>
+      </article>
+
+      <article class="panel">
+        <h2>Node Network</h2>
+        <div class="network reveal">
+          <div class="node" style="left:5%;top:20%">Lead Intake</div>
+          <div class="node" style="left:22%;top:55%">Intent Score</div>
+          <div class="node" style="left:37%;top:24%">Context Merge</div>
+          <div class="node" style="left:53%;top:58%">Owner Route</div>
+          <div class="node" style="left:67%;top:18%">Reminder Loop</div>
+          <div class="node" style="left:78%;top:58%">Booking Lock</div>
+          <div class="node" style="left:36%;top:78%">CRM Sync</div>
+          <div class="node" style="left:62%;top:82%">Outcome Trace</div>
+        </div>
+      </article>
+    </section>
+
+    <section class="section dual reveal">
+      <article class="panel">
+        <h2>Operational Status</h2>
+        <div class="metric-grid" data-op-status></div>
+      </article>
+      <article class="panel">
+        <h2>API Latency Trend</h2>
+        <svg id="latency-chart" width="100%" height="200" role="img" aria-label="API latency chart"></svg>
+      </article>
+    </section>
+
+    <section class="section dual reveal">
+      <article class="panel">
+        <h2>Integration Verification</h2>
+        <div class="badge-row" data-integration-badges></div>
+        <p class="footer-note">Verification states are illustrative for architecture demonstration and can be replaced by real health checks.</p>
+      </article>
+      <article class="panel">
+        <h2>Security Posture</h2>
+        <div class="badge-row">
+          <span class="badge win">CSP enforced</span>
+          <span class="badge win">Rate limits active</span>
+          <span class="badge win">Input sanitization</span>
+          <span class="badge">Audit trail enabled</span>
+          <span class="badge">JWT + refresh flow</span>
+        </div>
+      </article>
+    </section>
+
+    <section class="section dual reveal">
+      <article class="panel">
+        <h2>Architecture Diagram</h2>
+        <div class="switcher" aria-label="Architecture mode">
+          <button class="active" data-arch-mode="visual">Visual</button>
+          <button data-arch-mode="technical">Technical</button>
+        </div>
+        <div style="margin-top:.8rem" data-arch-diagram></div>
+      </article>
+
+      <article class="panel">
+        <h2>Day in the Life Player</h2>
+        <label class="field">Timeline Position
+          <input type="range" min="1" max="5" value="1" data-day-slider />
+        </label>
+        <p class="lead" data-day-output></p>
+      </article>
+    </section>
+
+    <section class="section dual reveal">
+      <article class="panel">
+        <h2>Integration Galaxy</h2>
+        <div style="position:relative;min-height:220px;border:1px solid var(--line);border-radius:1rem;overflow:hidden;background:rgba(8,14,22,.9)">
+          <div style="position:absolute;left:47%;top:44%;width:70px;height:70px;border-radius:999px;background:rgba(79,217,255,.25);display:grid;place-items:center;font-size:.7rem">Core</div>
+          <div style="position:absolute;left:18%;top:22%;border:1px solid var(--line);padding:.35rem .55rem;border-radius:999px">Google</div>
+          <div style="position:absolute;left:72%;top:25%;border:1px solid var(--line);padding:.35rem .55rem;border-radius:999px">Meta</div>
+          <div style="position:absolute;left:12%;top:66%;border:1px solid var(--line);padding:.35rem .55rem;border-radius:999px">SMS</div>
+          <div style="position:absolute;left:71%;top:69%;border:1px solid var(--line);padding:.35rem .55rem;border-radius:999px">Email</div>
+          <div style="position:absolute;left:39%;top:10%;border:1px solid var(--line);padding:.35rem .55rem;border-radius:999px">Mindbody Import</div>
+          <div style="position:absolute;left:39%;top:84%;border:1px solid var(--line);padding:.35rem .55rem;border-radius:999px">CSV Backfill</div>
+        </div>
+      </article>
+
+      <article class="panel">
+        <h2>Test Message Playground</h2>
+        <label class="field">Formality
+          <input data-message-slider type="range" min="0" max="100" value="55" name="formality" />
+        </label>
+        <label class="field">Length
+          <input data-message-slider type="range" min="0" max="100" value="48" name="length" />
+        </label>
+        <label class="field">Friendliness
+          <input data-message-slider type="range" min="0" max="100" value="62" name="friendly" />
+        </label>
+        <p class="footer-note" data-message-output></p>
+      </article>
+    </section>
+
+    <section class="section reveal">
+      <article class="panel">
+        <h2>County Coverage Map</h2>
+        <p class="lead">D3 + TopoJSON state heat view driven by county counts from the full county file.</p>
+        <div class="map-wrap"><svg id="system-county-map" role="img" aria-label="County coverage map"></svg></div>
+      </article>
+    </section>
+
+    <section class="section reveal">
+      <article class="panel">
+        <h2>Deploy This Operating Model</h2>
+        <form class="cta-grid" data-system-cta>
+          <label class="field">Owner Name
+            <input type="text" name="owner" placeholder="Owner name" />
+          </label>
+          <label class="field">Email
+            <input type="email" name="email" placeholder="owner@school.com" />
+          </label>
+          <label class="field">State
+            <select name="state" data-county-state data-county-target="system"><option value="">Select state</option></select>
+          </label>
+          <label class="field">County
+            <select name="county" data-county="system"><option value="">Select county</option></select>
+          </label>
+          <button type="submit">Generate System Brief</button>
+        </form>
+        <p class="footer-note" data-system-cta-result>Waiting for owner and territory details.</p>
+      </article>
+    </section>
+  </main>
+
+  <script type="module" src="/assets/js/the-system.js"></script>
+</body>
+</html>
