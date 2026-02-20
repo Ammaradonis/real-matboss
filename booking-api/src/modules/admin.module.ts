@@ -12,12 +12,12 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
-import { InjectRepository, TypeOrmModule } from '@nestjs/typeorm';
+import { InjectDataSource, InjectRepository, TypeOrmModule } from '@nestjs/typeorm';
 import bcrypt from 'bcrypt';
 import { stringify } from 'csv-stringify/sync';
 import { IsEmail, IsOptional, IsString } from 'class-validator';
 import { Request, Response } from 'express';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 
 import { AuthGuard } from '../common/auth.guard';
 import { AdminGuard } from '../common/roles.guard';
@@ -75,6 +75,7 @@ class UpdateSettingDto {
 @Controller('admin')
 export class AdminController {
   private readonly logger = new Logger(AdminController.name);
+  private userColumnCache: Set<string> | null = null;
 
   constructor(
     @InjectRepository(UserEntity)
@@ -87,15 +88,121 @@ export class AdminController {
     private readonly settingRepository: Repository<AdminSettingEntity>,
     @InjectRepository(EmailQueueEntity)
     private readonly emailQueueRepository: Repository<EmailQueueEntity>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
+
+  private async getUserColumns(): Promise<Set<string>> {
+    if (this.userColumnCache) {
+      return this.userColumnCache;
+    }
+
+    const rows = await this.dataSource.query(`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'users'
+    `);
+
+    this.userColumnCache = new Set(
+      rows.map((row: { column_name?: string }) => String(row.column_name ?? '').toLowerCase()),
+    );
+
+    return this.userColumnCache;
+  }
+
+  private async findAdminUserByCredentials(
+    tenantId: string,
+    email: string,
+  ): Promise<{
+    id: string;
+    tenantId: string;
+    email: string;
+    role: string;
+    passwordHash: string;
+  } | null> {
+    const columns = await this.getUserColumns();
+    if (!columns.has('email')) {
+      this.logger.warn('Users table is missing email column.');
+      return null;
+    }
+
+    const hasTenantId = columns.has('tenant_id');
+    const hasRole = columns.has('role');
+    const hasPasswordHash = columns.has('password_hash');
+    const hasPassword = columns.has('password');
+
+    if (!hasPasswordHash && !hasPassword) {
+      this.logger.warn('Users table is missing both password_hash and password columns.');
+      return null;
+    }
+
+    const params: string[] = [email.toLowerCase()];
+    const whereClauses = ['LOWER(u.email) = LOWER($1)'];
+
+    let tenantParamIndex: number;
+    if (hasTenantId) {
+      params.push(tenantId);
+      tenantParamIndex = params.length;
+      whereClauses.push(`u.tenant_id = $${tenantParamIndex}`);
+    } else {
+      params.push(tenantId);
+      tenantParamIndex = params.length;
+    }
+
+    if (hasRole) {
+      whereClauses.push(`LOWER(u.role::text) = 'admin'`);
+    }
+
+    const passwordSql = hasPasswordHash ? 'u.password_hash::text' : 'u.password::text';
+    const roleSql = hasRole ? 'u.role::text' : `'ADMIN'`;
+    const tenantSql = hasTenantId ? 'u.tenant_id::text' : `$${tenantParamIndex}::text`;
+
+    const sql = `
+      SELECT
+        u.id::text AS id,
+        ${tenantSql} AS tenant_id,
+        LOWER(u.email)::text AS email,
+        ${roleSql} AS role,
+        ${passwordSql} AS password_hash
+      FROM users u
+      WHERE ${whereClauses.join(' AND ')}
+      LIMIT 1
+    `;
+
+    try {
+      const rows = await this.dataSource.query(sql, params);
+      if (!rows.length) {
+        return null;
+      }
+
+      const row = rows[0] as {
+        id?: string;
+        tenant_id?: string;
+        email?: string;
+        role?: string;
+        password_hash?: string;
+      };
+
+      return {
+        id: String(row.id ?? ''),
+        tenantId: String(row.tenant_id ?? tenantId),
+        email: String(row.email ?? ''),
+        role: String(row.role ?? 'ADMIN'),
+        passwordHash: String(row.password_hash ?? ''),
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed querying admin login row: ${message}`);
+      return null;
+    }
+  }
 
   @Post('auth/login')
   async adminLogin(@Body() input: AdminLoginDto, @Req() req: Request): Promise<{ accessToken: string }> {
     const tenantId = resolveTenantId(req);
     const normalizedEmail = input.email.toLowerCase().trim();
-    const user = await this.userRepository.findOne({
-      where: { tenantId, email: normalizedEmail },
-    });
+    const user = await this.findAdminUserByCredentials(tenantId, normalizedEmail);
 
     if (!user || String(user.role).toLowerCase() !== UserRole.ADMIN.toLowerCase()) {
       throw new UnauthorizedException('Invalid admin credentials');

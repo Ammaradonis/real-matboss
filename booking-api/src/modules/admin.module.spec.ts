@@ -2,7 +2,6 @@ import { UnauthorizedException } from '@nestjs/common';
 import bcrypt from 'bcrypt';
 
 import { AdminController } from './admin.module';
-import { UserRole } from '../database/entities';
 
 function makeChain<T>(result: T) {
   return {
@@ -24,6 +23,9 @@ function makeChain<T>(result: T) {
 function buildController() {
   const userRepository = {
     findOne: jest.fn(),
+  };
+  const dataSource = {
+    query: jest.fn(),
   };
 
   const discoveryRepository = {
@@ -54,6 +56,7 @@ function buildController() {
     bookingRepository as never,
     settingRepository as never,
     emailQueueRepository as never,
+    dataSource as never,
   );
 
   return {
@@ -63,6 +66,7 @@ function buildController() {
     bookingRepository,
     settingRepository,
     emailQueueRepository,
+    dataSource,
   };
 }
 
@@ -72,8 +76,15 @@ describe('AdminController', () => {
   });
 
   it('rejects invalid admin logins', async () => {
-    const { controller, userRepository } = buildController();
-    userRepository.findOne.mockResolvedValue(null);
+    const { controller, dataSource } = buildController();
+    dataSource.query
+      .mockResolvedValueOnce([
+        { column_name: 'email' },
+        { column_name: 'tenant_id' },
+        { column_name: 'role' },
+        { column_name: 'password_hash' },
+      ])
+      .mockResolvedValueOnce([]);
 
     await expect(
       controller.adminLogin(
@@ -84,16 +95,25 @@ describe('AdminController', () => {
   });
 
   it('issues token for valid admin login', async () => {
-    const { controller, userRepository } = buildController();
+    const { controller, dataSource } = buildController();
     const compareSpy = jest.spyOn(bcrypt, 'compare').mockResolvedValue(true as never);
 
-    userRepository.findOne.mockResolvedValue({
-      id: 'user-1',
-      tenantId: 'tenant-1',
-      email: 'admin@example.com',
-      role: UserRole.ADMIN,
-      passwordHash: '$2b$10$abc',
-    });
+    dataSource.query
+      .mockResolvedValueOnce([
+        { column_name: 'email' },
+        { column_name: 'tenant_id' },
+        { column_name: 'role' },
+        { column_name: 'password_hash' },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'user-1',
+          tenant_id: 'tenant-1',
+          email: 'admin@example.com',
+          role: 'ADMIN',
+          password_hash: '$2b$10$abc',
+        },
+      ]);
 
     const response = await controller.adminLogin(
       { email: 'admin@example.com', password: 'correct' },
@@ -106,16 +126,25 @@ describe('AdminController', () => {
   });
 
   it('accepts legacy lowercase admin role values', async () => {
-    const { controller, userRepository } = buildController();
+    const { controller, dataSource } = buildController();
     const compareSpy = jest.spyOn(bcrypt, 'compare').mockResolvedValue(true as never);
 
-    userRepository.findOne.mockResolvedValue({
-      id: 'user-1',
-      tenantId: 'tenant-1',
-      email: 'admin@example.com',
-      role: 'admin',
-      passwordHash: '$2b$10$abc',
-    });
+    dataSource.query
+      .mockResolvedValueOnce([
+        { column_name: 'email' },
+        { column_name: 'tenant_id' },
+        { column_name: 'role' },
+        { column_name: 'password_hash' },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'user-1',
+          tenant_id: 'tenant-1',
+          email: 'admin@example.com',
+          role: 'admin',
+          password_hash: '$2b$10$abc',
+        },
+      ]);
 
     await expect(
       controller.adminLogin(
@@ -128,18 +157,27 @@ describe('AdminController', () => {
   });
 
   it('rejects invalid password hash values without throwing 500', async () => {
-    const { controller, userRepository } = buildController();
+    const { controller, dataSource } = buildController();
     const compareSpy = jest
       .spyOn(bcrypt, 'compare')
       .mockRejectedValue(new Error('invalid salt version') as never);
 
-    userRepository.findOne.mockResolvedValue({
-      id: 'user-1',
-      tenantId: 'tenant-1',
-      email: 'admin@example.com',
-      role: UserRole.ADMIN,
-      passwordHash: 'not-a-bcrypt-hash',
-    });
+    dataSource.query
+      .mockResolvedValueOnce([
+        { column_name: 'email' },
+        { column_name: 'tenant_id' },
+        { column_name: 'role' },
+        { column_name: 'password_hash' },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'user-1',
+          tenant_id: 'tenant-1',
+          email: 'admin@example.com',
+          role: 'ADMIN',
+          password_hash: 'not-a-bcrypt-hash',
+        },
+      ]);
 
     await expect(
       controller.adminLogin(
