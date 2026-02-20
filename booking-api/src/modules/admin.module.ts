@@ -97,16 +97,22 @@ export class AdminController {
       return this.userColumnCache;
     }
 
-    const rows = await this.dataSource.query(`
-      SELECT column_name
-      FROM information_schema.columns
-      WHERE table_schema = 'public'
-        AND table_name = 'users'
-    `);
+    try {
+      const rows = await this.dataSource.query(`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'users'
+      `);
 
-    this.userColumnCache = new Set(
-      rows.map((row: { column_name?: string }) => String(row.column_name ?? '').toLowerCase()),
-    );
+      this.userColumnCache = new Set(
+        rows.map((row: { column_name?: string }) => String(row.column_name ?? '').toLowerCase()),
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`getUserColumns query failed: ${message}`);
+      return new Set();
+    }
 
     return this.userColumnCache;
   }
