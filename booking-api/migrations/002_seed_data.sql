@@ -198,7 +198,20 @@ VALUES (
   24,
   60
 )
-ON CONFLICT (tenant_id, booking_url) DO NOTHING;
+ON CONFLICT (id) DO UPDATE
+SET
+  tenant_id = EXCLUDED.tenant_id,
+  user_id = EXCLUDED.user_id,
+  name = EXCLUDED.name,
+  bio = EXCLUDED.bio,
+  specialties = EXCLUDED.specialties,
+  booking_url = EXCLUDED.booking_url,
+  time_zone = EXCLUDED.time_zone,
+  buffer_before_minutes = EXCLUDED.buffer_before_minutes,
+  buffer_after_minutes = EXCLUDED.buffer_after_minutes,
+  minimum_notice_hours = EXCLUDED.minimum_notice_hours,
+  maximum_advance_days = EXCLUDED.maximum_advance_days,
+  updated_at = NOW();
 
 INSERT INTO event_types (
   id,

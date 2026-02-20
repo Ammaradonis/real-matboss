@@ -25,7 +25,7 @@ function buildAvailabilityPath() {
   const from = new Date(now.getTime() + 24 * 60 * 60 * 1000);
   const to = new Date(from.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-  return `/providers/${PROVIDER_ID}/availability?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}&viewerTz=America/New_York&eventTypeId=${EVENT_TYPE_ID}`;
+  return `/providers/${PROVIDER_ID}/availability?from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}&viewerTz=America/Los_Angeles&eventTypeId=${EVENT_TYPE_ID}`;
 }
 
 function buildBookingBody(index) {

@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS providers (
   bio TEXT NOT NULL DEFAULT '',
   specialties TEXT NOT NULL DEFAULT '',
   booking_url VARCHAR(140) NOT NULL,
-  time_zone VARCHAR(100) NOT NULL DEFAULT 'America/New_York',
+  time_zone VARCHAR(100) NOT NULL DEFAULT 'America/Los_Angeles',
   buffer_before_minutes INT NOT NULL DEFAULT 15,
   buffer_after_minutes INT NOT NULL DEFAULT 15,
   minimum_notice_hours INT NOT NULL DEFAULT 24,

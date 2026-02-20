@@ -127,7 +127,7 @@ export class ProviderController {
       bio: input.bio ?? '',
       specialties: input.specialties ?? '',
       bookingUrl: input.bookingUrl,
-      timeZone: input.timeZone ?? 'America/New_York',
+      timeZone: input.timeZone ?? 'America/Los_Angeles',
     });
     return this.providerRepository.save(entity);
   }

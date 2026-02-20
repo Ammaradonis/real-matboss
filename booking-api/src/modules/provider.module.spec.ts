@@ -49,7 +49,7 @@ describe('ProviderController', () => {
       { headers: { 'x-tenant-id': 'tenant-1' } } as never,
     );
 
-    expect(response.timeZone).toBe('America/New_York');
+    expect(response.timeZone).toBe('America/Los_Angeles');
     expect(response.tenantId).toBe('tenant-1');
   });
 

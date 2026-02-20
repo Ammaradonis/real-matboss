@@ -1,32 +1,6 @@
-import { format, parseISO } from 'date-fns';
-import { toZonedTime } from 'date-fns-tz';
-
+import { formatSlotEnd, formatSlotStart, groupSlotsByDayPart } from '../core/temporal/slot-engine';
 import type { SlotDto } from '../types';
-
-type GroupKey = 'Morning' | 'Afternoon' | 'Evening';
-
-function groupSlots(slots: SlotDto[], timezone: string): Record<GroupKey, SlotDto[]> {
-  const initialGroups: Record<GroupKey, SlotDto[]> = {
-    Morning: [],
-    Afternoon: [],
-    Evening: [],
-  };
-
-  return slots.reduce(
-    (acc, slot) => {
-      const hour = toZonedTime(parseISO(slot.startUtc), timezone).getHours();
-      if (hour < 12) {
-        acc.Morning.push(slot);
-      } else if (hour < 17) {
-        acc.Afternoon.push(slot);
-      } else {
-        acc.Evening.push(slot);
-      }
-      return acc;
-    },
-    initialGroups,
-  );
-}
+import type { SlotGroupKey } from '../core/temporal/slot-engine';
 
 export function SlotPicker({
   slots,
@@ -39,7 +13,7 @@ export function SlotPicker({
   timezone: string;
   onSelect: (slot: SlotDto) => void;
 }) {
-  const grouped = groupSlots(slots, timezone);
+  const grouped = groupSlotsByDayPart(slots, timezone);
 
   return (
     <section className="rounded-2xl border border-white/10 bg-mat-surface/80 p-4 sm:p-5">
@@ -51,14 +25,14 @@ export function SlotPicker({
         Select the fastest open window. Availability refreshes in real time if another booking lands.
       </p>
       <div className="space-y-4" role="list" aria-label="Available slot groups">
-        {(Object.keys(grouped) as GroupKey[]).map((group) => (
+        {(Object.keys(grouped) as SlotGroupKey[]).map((group) => (
           <div key={group} role="listitem">
             <p className="mb-2 text-xs font-medium uppercase tracking-wider text-mat-gold">{group}</p>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {grouped[group].length === 0 ? <p className="text-sm text-slate-500">No slots in this range.</p> : null}
               {grouped[group].map((slot) => {
                 const active = selected?.startUtc === slot.startUtc;
-                const label = format(toZonedTime(parseISO(slot.startUtc), timezone), 'h:mm a');
+                const label = formatSlotStart(slot, timezone);
                 return (
                   <button
                     key={slot.startUtc}
@@ -73,7 +47,7 @@ export function SlotPicker({
                   >
                     <span className="font-semibold">{label}</span>
                     <span className="mt-1 block text-[11px] text-slate-400">
-                      {format(toZonedTime(parseISO(slot.endUtc), timezone), 'h:mm a')} end
+                      {formatSlotEnd(slot, timezone)} end
                     </span>
                   </button>
                 );

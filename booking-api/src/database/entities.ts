@@ -149,7 +149,7 @@ export class ProviderEntity {
   @Column({ name: 'booking_url', type: 'varchar', length: 140 })
   bookingUrl!: string;
 
-  @Column({ name: 'time_zone', type: 'varchar', length: 100, default: 'America/New_York' })
+  @Column({ name: 'time_zone', type: 'varchar', length: 100, default: 'America/Los_Angeles' })
   timeZone!: string;
 
   @Column({ name: 'buffer_before_minutes', type: 'int', default: 15 })

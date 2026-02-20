@@ -1,4 +1,4 @@
-import { addDays, differenceInCalendarDays, format, startOfDay } from 'date-fns';
+import { addDays, differenceInCalendarDays, format } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
@@ -10,15 +10,10 @@ import { SchoolDetailsForm } from './components/SchoolDetailsForm';
 import { SlotPicker } from './components/SlotPicker';
 import { StepIndicator } from './components/StepIndicator';
 import { SuccessView } from './components/SuccessView';
+import { dedupeAndSortSlots, filterAvailableSlots, getSlotRangeForDate } from './core/temporal/slot-engine';
+import { useBookingFlow } from './features/booking-flow/use-booking-flow';
 import { useRealtime } from './hooks/useRealtime';
-import type {
-  BookingStep,
-  DiscoveryBookingResponse,
-  EventTypeDto,
-  ProviderDto,
-  SchoolDetails,
-  SlotDto,
-} from './types';
+import type { EventTypeDto, ProviderDto, SlotDto } from './types';
 
 const DEFAULT_EVENT_TYPE: EventTypeDto = {
   id: '55555555-5555-5555-5555-555555555551',
@@ -36,51 +31,45 @@ const DEFAULT_EVENT_TYPE: EventTypeDto = {
 
 const DEFAULT_PROVIDER: ProviderDto = {
   id: '44444444-4444-4444-4444-444444444444',
-  name: 'MatBoss Vienna Operations',
+  name: 'MatBoss Pacific Operations',
   bio: '',
   specialties: '',
   bookingUrl: 'matboss-discovery',
-  timeZone: 'America/New_York',
+  timeZone: 'America/Los_Angeles',
   isActive: true,
-  bufferBeforeMinutes: 0,
-  bufferAfterMinutes: 0,
-  minimumNoticeHours: 2,
+  bufferBeforeMinutes: 10,
+  bufferAfterMinutes: 10,
+  minimumNoticeHours: 12,
   maximumAdvanceDays: 60,
 };
 
 function App() {
   const timezone = useMemo(
-    () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York',
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Los_Angeles',
     [],
   );
 
-  const [step, setStep] = useState<BookingStep>(1);
+  const {
+    step,
+    selectedDate,
+    selectedSlot,
+    details,
+    bookingResult,
+    setStep,
+    selectDate,
+    selectSlot,
+    reconcileSelectedSlot,
+    saveDetails,
+    completeBooking,
+  } = useBookingFlow();
+
   const [provider, setProvider] = useState<ProviderDto>(DEFAULT_PROVIDER);
   const [eventTypes, setEventTypes] = useState<EventTypeDto[]>([DEFAULT_EVENT_TYPE]);
   const [selectedEventType, setSelectedEventType] = useState<EventTypeDto>(DEFAULT_EVENT_TYPE);
-  const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
   const [slots, setSlots] = useState<SlotDto[]>([]);
-  const [selectedSlot, setSelectedSlot] = useState<SlotDto | null>(null);
-  const [details, setDetails] = useState<SchoolDetails>({
-    schoolName: '',
-    city: '',
-    state: '',
-    county: '',
-    contactName: '',
-    email: '',
-    phone: '',
-    preferredContactMethod: 'email',
-    activeStudents: 0,
-    instructorCount: 1,
-    currentSystem: '',
-    schedulingChallenges: '',
-    budgetRange: '',
-    implementationTimeline: '',
-  });
   const [bootstrapLoading, setBootstrapLoading] = useState(false);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [bookingResult, setBookingResult] = useState<DiscoveryBookingResponse | null>(null);
   const [error, setError] = useState('');
 
   const windowEnd = useMemo(() => addDays(new Date(), 60), []);
@@ -123,24 +112,24 @@ function App() {
 
     setLoadingSlots(true);
     try {
-      const from = startOfDay(selectedDate);
-      const to = addDays(from, 1);
+      const { fromIso, toIso } = getSlotRangeForDate(selectedDate);
       const data = await getSlots({
         providerId: provider.id,
-        fromIso: from.toISOString(),
-        toIso: to.toISOString(),
+        fromIso,
+        toIso,
         viewerTz: timezone,
         eventTypeId: selectedEventType.id,
       });
-      setSlots(data.filter((slot) => slot.isAvailable ?? true));
-      setSelectedSlot((prev) => (prev && data.some((slot) => slot.startUtc === prev.startUtc) ? prev : null));
+      const normalizedSlots = dedupeAndSortSlots(filterAvailableSlots(data));
+      setSlots(normalizedSlots);
+      reconcileSelectedSlot(normalizedSlots);
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load slots');
     } finally {
       setLoadingSlots(false);
     }
-  }, [provider.id, selectedDate, selectedEventType.id, timezone]);
+  }, [provider.id, reconcileSelectedSlot, selectedDate, selectedEventType.id, timezone]);
 
   useEffect(() => {
     void loadBootstrap();
@@ -167,15 +156,14 @@ function App() {
         slot: selectedSlot,
         details,
       });
-      setBookingResult(response);
-      setStep(5);
+      completeBooking(response);
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Booking failed');
     } finally {
       setSubmitting(false);
     }
-  }, [details, provider.id, selectedEventType.id, selectedSlot]);
+  }, [completeBooking, details, provider.id, selectedEventType.id, selectedSlot]);
 
   return (
     <main className="grain-overlay mx-auto min-h-screen max-w-5xl px-4 py-8 text-mat-ink">
@@ -201,7 +189,10 @@ function App() {
           <button
             key={item.id}
             type="button"
-            onClick={() => setSelectedEventType(item)}
+            onClick={() => {
+              setSelectedEventType(item);
+              selectSlot(null);
+            }}
             className={`rounded-full border px-3 py-1 text-xs transition ${
               selectedEventType.id === item.id
                 ? 'border-mat-cyan bg-mat-cyan/20 text-mat-ink'
@@ -220,13 +211,7 @@ function App() {
 
       {step === 1 && (
         <div className="space-y-4">
-          <CalendarGrid
-            selected={selectedDate}
-            onSelect={(date) => {
-              setSelectedDate(date);
-              setSelectedSlot(null);
-            }}
-          />
+          <CalendarGrid selected={selectedDate} onSelect={selectDate} />
           <button type="button" className="btn-primary" onClick={() => setStep(2)} disabled={bootstrapLoading}>
             Continue
           </button>
@@ -236,7 +221,7 @@ function App() {
       {step === 2 && (
         <div className="space-y-4">
           {loadingSlots ? <p className="text-sm text-slate-400">Loading available slots…</p> : null}
-          <SlotPicker slots={slots} selected={selectedSlot} timezone={timezone} onSelect={setSelectedSlot} />
+          <SlotPicker slots={slots} selected={selectedSlot} timezone={timezone} onSelect={selectSlot} />
           <div className="flex gap-2">
             <button type="button" className="btn-secondary" onClick={() => setStep(1)}>
               Back
@@ -258,7 +243,7 @@ function App() {
           value={details}
           onBack={() => setStep(2)}
           onSubmit={(next) => {
-            setDetails(next);
+            saveDetails(next);
             setStep(4);
           }}
         />
