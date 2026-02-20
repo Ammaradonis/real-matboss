@@ -204,11 +204,12 @@ export class AdminController {
     }
   }
 
-  @Post('auth/login')
-  async adminLogin(@Body() input: AdminLoginDto, @Req() req: Request): Promise<{ accessToken: string }> {
-    const tenantId = resolveTenantId(req);
-    const normalizedEmail = input.email.toLowerCase().trim();
-    const user = await this.findAdminUserByCredentials(tenantId, normalizedEmail);
+  private tryEnvFallback(
+    normalizedEmail: string,
+    password: string,
+    tenantId: string,
+    userId?: string,
+  ): { accessToken: string } | null {
     const allowEnvFallback =
       !process.env.ALLOW_ENV_ADMIN_LOGIN ||
       /^(1|true|yes)$/i.test(process.env.ALLOW_ENV_ADMIN_LOGIN);
@@ -217,22 +218,59 @@ export class AdminController {
       .trim();
     const envAdminPassword = process.env.ADMIN_LOGIN_PASSWORD ?? 'password123';
 
-    if (!user || String(user.role).toLowerCase() !== UserRole.ADMIN.toLowerCase()) {
-      if (allowEnvFallback && normalizedEmail === envAdminEmail) {
-        if (input.password !== envAdminPassword) {
-          throw new UnauthorizedException('Invalid admin credentials');
-        }
+    if (!allowEnvFallback || normalizedEmail !== envAdminEmail || password !== envAdminPassword) {
+      return null;
+    }
 
-        return {
-          accessToken: signAccessToken({ sub: 'env-admin', tenantId, role: UserRole.ADMIN }),
-        };
+    try {
+      return {
+        accessToken: signAccessToken({
+          sub: userId ?? 'env-admin',
+          tenantId,
+          role: UserRole.ADMIN,
+        }),
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`signAccessToken failed in env fallback: ${message}`);
+      return null;
+    }
+  }
+
+  @Post('auth/login')
+  async adminLogin(@Body() input: AdminLoginDto, @Req() req: Request): Promise<{ accessToken: string }> {
+    const tenantId = resolveTenantId(req);
+    const normalizedEmail = input.email.toLowerCase().trim();
+
+    let user: {
+      id: string;
+      tenantId: string;
+      email: string;
+      role: string;
+      passwordHash: string;
+    } | null = null;
+
+    try {
+      user = await this.findAdminUserByCredentials(tenantId, normalizedEmail);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`findAdminUserByCredentials threw: ${message}`);
+    }
+
+    if (!user || String(user.role ?? '').toLowerCase() !== UserRole.ADMIN.toLowerCase()) {
+      const fallback = this.tryEnvFallback(normalizedEmail, input.password, tenantId);
+      if (fallback) {
+        return fallback;
       }
-
       throw new UnauthorizedException('Invalid admin credentials');
     }
 
     if (!user.passwordHash || typeof user.passwordHash !== 'string') {
       this.logger.warn(`Admin user ${normalizedEmail} has no password hash configured.`);
+      const fallback = this.tryEnvFallback(normalizedEmail, input.password, tenantId, user.id);
+      if (fallback) {
+        return fallback;
+      }
       throw new UnauthorizedException('Invalid admin credentials');
     }
 
@@ -241,21 +279,25 @@ export class AdminController {
       valid = await bcrypt.compare(input.password, user.passwordHash);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.logger.warn(`Admin login hash compare failed for ${normalizedEmail}: ${message}`);
+      this.logger.warn(`bcrypt.compare failed for ${normalizedEmail}: ${message}`);
     }
 
-    if (!valid) {
-      if (allowEnvFallback && normalizedEmail === envAdminEmail && input.password === envAdminPassword) {
+    if (valid) {
+      try {
         return {
           accessToken: signAccessToken({ sub: user.id, tenantId, role: UserRole.ADMIN }),
         };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`signAccessToken failed: ${message}`);
       }
-      throw new UnauthorizedException('Invalid admin credentials');
     }
 
-    return {
-      accessToken: signAccessToken({ sub: user.id, tenantId, role: UserRole.ADMIN }),
-    };
+    const fallback = this.tryEnvFallback(normalizedEmail, input.password, tenantId, user.id);
+    if (fallback) {
+      return fallback;
+    }
+    throw new UnauthorizedException('Invalid admin credentials');
   }
 
   @UseGuards(AuthGuard, AdminGuard)
