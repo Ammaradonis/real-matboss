@@ -75,6 +75,12 @@ describe('AdminController', () => {
     jest.clearAllMocks();
   });
 
+  afterEach(() => {
+    delete process.env.ALLOW_ENV_ADMIN_LOGIN;
+    delete process.env.ADMIN_LOGIN_EMAIL;
+    delete process.env.ADMIN_LOGIN_PASSWORD;
+  });
+
   it('rejects invalid admin logins', async () => {
     const { controller, dataSource } = buildController();
     dataSource.query
@@ -187,6 +193,29 @@ describe('AdminController', () => {
     ).rejects.toThrow(UnauthorizedException);
 
     compareSpy.mockRestore();
+  });
+
+  it('allows env-based fallback admin login when DB row is missing', async () => {
+    const { controller, dataSource } = buildController();
+    dataSource.query
+      .mockResolvedValueOnce([
+        { column_name: 'email' },
+        { column_name: 'tenant_id' },
+        { column_name: 'role' },
+        { column_name: 'password_hash' },
+      ])
+      .mockResolvedValueOnce([]);
+
+    process.env.ALLOW_ENV_ADMIN_LOGIN = 'true';
+    process.env.ADMIN_LOGIN_EMAIL = 'admin@matboss.online';
+    process.env.ADMIN_LOGIN_PASSWORD = 'password123';
+
+    await expect(
+      controller.adminLogin(
+        { email: 'admin@matboss.online', password: 'password123' },
+        { headers: { 'x-tenant-id': 'tenant-1' } } as never,
+      ),
+    ).resolves.toMatchObject({ accessToken: expect.any(String) });
   });
 
   it('returns expanded analytics payload', async () => {
