@@ -5,6 +5,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Request } from 'express';
+import { JsonWebTokenError, NotBeforeError, TokenExpiredError } from 'jsonwebtoken';
 
 import { verifyAccessToken } from './jwt.util';
 
@@ -19,7 +20,21 @@ export class AuthGuard implements CanActivate {
     }
 
     const token = header.slice('Bearer '.length);
-    const payload = verifyAccessToken(token);
+    let payload: unknown;
+    try {
+      payload = verifyAccessToken(token);
+    } catch (error) {
+      if (error instanceof TokenExpiredError) {
+        throw new UnauthorizedException('Token expired');
+      }
+
+      if (error instanceof JsonWebTokenError || error instanceof NotBeforeError) {
+        throw new UnauthorizedException('Invalid bearer token');
+      }
+
+      throw new UnauthorizedException('Invalid bearer token');
+    }
+
     (request as Request & { user?: unknown }).user = payload;
     return true;
   }

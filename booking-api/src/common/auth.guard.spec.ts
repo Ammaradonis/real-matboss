@@ -1,4 +1,5 @@
 import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { TokenExpiredError } from 'jsonwebtoken';
 
 import { AuthGuard } from './auth.guard';
 import { verifyAccessToken } from './jwt.util';
@@ -48,5 +49,41 @@ describe('AuthGuard', () => {
       tenantId: 'tenant-1',
       role: 'ADMIN',
     });
+  });
+
+  it('maps expired jwt errors to UnauthorizedException', () => {
+    const guard = new AuthGuard();
+    const request = { headers: { authorization: 'Bearer expired-token' } };
+    (verifyAccessToken as jest.Mock).mockImplementation(() => {
+      throw new TokenExpiredError('jwt expired', new Date('2026-02-20T13:15:45.000Z'));
+    });
+
+    const context = {
+      switchToHttp: () => ({
+        getRequest: () => request,
+      }),
+    } as unknown as ExecutionContext;
+
+    const attempt = () => guard.canActivate(context);
+    expect(attempt).toThrow(UnauthorizedException);
+    expect(attempt).toThrow('Token expired');
+  });
+
+  it('maps invalid jwt errors to UnauthorizedException', () => {
+    const guard = new AuthGuard();
+    const request = { headers: { authorization: 'Bearer malformed-token' } };
+    (verifyAccessToken as jest.Mock).mockImplementation(() => {
+      throw new Error('jwt malformed');
+    });
+
+    const context = {
+      switchToHttp: () => ({
+        getRequest: () => request,
+      }),
+    } as unknown as ExecutionContext;
+
+    const attempt = () => guard.canActivate(context);
+    expect(attempt).toThrow(UnauthorizedException);
+    expect(attempt).toThrow('Invalid bearer token');
   });
 });
