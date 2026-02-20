@@ -14,6 +14,15 @@ type RuntimeConfig = {
   VITE_TENANT_ID?: string;
 };
 
+function firstNonEmpty(...values: Array<string | undefined>): string | undefined {
+  for (const value of values) {
+    if (value && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
 function getRuntimeConfig(): RuntimeConfig {
   if (typeof window === 'undefined') {
     return {};
@@ -23,15 +32,14 @@ function getRuntimeConfig(): RuntimeConfig {
 }
 
 const runtimeConfig = getRuntimeConfig();
-const API_BASE = (
-  runtimeConfig.VITE_API_URL ??
-  import.meta.env.VITE_API_URL ??
-  'http://localhost:3000'
-).replace(/\/$/, '');
+const API_BASE = firstNonEmpty(
+  runtimeConfig.VITE_API_URL,
+  import.meta.env.VITE_API_URL,
+  'http://localhost:3000',
+)!.replace(/\/$/, '');
 const API_ROOT = `${API_BASE}/api/v1`;
 const DEFAULT_TENANT_ID =
-  runtimeConfig.VITE_TENANT_ID ??
-  import.meta.env.VITE_TENANT_ID ??
+  firstNonEmpty(runtimeConfig.VITE_TENANT_ID, import.meta.env.VITE_TENANT_ID) ??
   '11111111-1111-1111-1111-111111111111';
 
 interface RequestOptions {
