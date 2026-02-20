@@ -15,9 +15,7 @@ export class SanitizeInterceptor implements NestInterceptor {
       request.body = this.sanitizeValue(request.body);
     }
 
-    if (request?.query) {
-      request.query = this.sanitizeValue(request.query);
-    }
+    // Note: request.query is read-only in Express 5 (NestJS 11+), skip sanitizing it
 
     return next.handle();
   }
