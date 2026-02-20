@@ -105,6 +105,52 @@ describe('AdminController', () => {
     compareSpy.mockRestore();
   });
 
+  it('accepts legacy lowercase admin role values', async () => {
+    const { controller, userRepository } = buildController();
+    const compareSpy = jest.spyOn(bcrypt, 'compare').mockResolvedValue(true as never);
+
+    userRepository.findOne.mockResolvedValue({
+      id: 'user-1',
+      tenantId: 'tenant-1',
+      email: 'admin@example.com',
+      role: 'admin',
+      passwordHash: '$2b$10$abc',
+    });
+
+    await expect(
+      controller.adminLogin(
+        { email: 'admin@example.com', password: 'correct' },
+        { headers: { 'x-tenant-id': 'tenant-1' } } as never,
+      ),
+    ).resolves.toMatchObject({ accessToken: expect.any(String) });
+
+    compareSpy.mockRestore();
+  });
+
+  it('rejects invalid password hash values without throwing 500', async () => {
+    const { controller, userRepository } = buildController();
+    const compareSpy = jest
+      .spyOn(bcrypt, 'compare')
+      .mockRejectedValue(new Error('invalid salt version') as never);
+
+    userRepository.findOne.mockResolvedValue({
+      id: 'user-1',
+      tenantId: 'tenant-1',
+      email: 'admin@example.com',
+      role: UserRole.ADMIN,
+      passwordHash: 'not-a-bcrypt-hash',
+    });
+
+    await expect(
+      controller.adminLogin(
+        { email: 'admin@example.com', password: 'correct' },
+        { headers: { 'x-tenant-id': 'tenant-1' } } as never,
+      ),
+    ).rejects.toThrow(UnauthorizedException);
+
+    compareSpy.mockRestore();
+  });
+
   it('returns expanded analytics payload', async () => {
     const { controller, bookingRepository, discoveryRepository, emailQueueRepository } = buildController();
 

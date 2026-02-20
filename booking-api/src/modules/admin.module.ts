@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Logger,
   Module,
   Patch,
   Post,
@@ -73,6 +74,8 @@ class UpdateSettingDto {
 
 @Controller('admin')
 export class AdminController {
+  private readonly logger = new Logger(AdminController.name);
+
   constructor(
     @InjectRepository(UserEntity)
     private readonly userRepository: Repository<UserEntity>,
@@ -89,15 +92,28 @@ export class AdminController {
   @Post('auth/login')
   async adminLogin(@Body() input: AdminLoginDto, @Req() req: Request): Promise<{ accessToken: string }> {
     const tenantId = resolveTenantId(req);
+    const normalizedEmail = input.email.toLowerCase().trim();
     const user = await this.userRepository.findOne({
-      where: { tenantId, email: input.email.toLowerCase(), role: UserRole.ADMIN },
+      where: { tenantId, email: normalizedEmail },
     });
 
-    if (!user) {
+    if (!user || String(user.role).toLowerCase() !== UserRole.ADMIN.toLowerCase()) {
       throw new UnauthorizedException('Invalid admin credentials');
     }
 
-    const valid = await bcrypt.compare(input.password, user.passwordHash);
+    if (!user.passwordHash || typeof user.passwordHash !== 'string') {
+      this.logger.warn(`Admin user ${normalizedEmail} has no password hash configured.`);
+      throw new UnauthorizedException('Invalid admin credentials');
+    }
+
+    let valid = false;
+    try {
+      valid = await bcrypt.compare(input.password, user.passwordHash);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Admin login hash compare failed for ${normalizedEmail}: ${message}`);
+    }
+
     if (!valid) {
       throw new UnauthorizedException('Invalid admin credentials');
     }
