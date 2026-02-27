@@ -97,11 +97,24 @@ describe('Booking App flow', () => {
     const user = userEvent.setup();
     render(<App />);
 
+    const continueButton = screen.getByRole('button', { name: 'Continue' });
+    expect(continueButton).toBeDisabled();
+
+    const firstAvailableDate = screen
+      .getAllByRole('button', { name: /Choose /i })
+      .find((button) => !button.hasAttribute('disabled'));
+    if (!firstAvailableDate) {
+      throw new Error('Expected at least one selectable date');
+    }
+
+    await user.click(firstAvailableDate);
+    expect(continueButton).toBeEnabled();
+
+    await user.click(continueButton);
+
     await waitFor(() => {
       expect(getSlotsMock).toHaveBeenCalled();
     });
-
-    await user.click(screen.getByRole('button', { name: 'Continue' }));
 
     const slotButton = await screen.findByRole('button', {
       name: /Select .* slot/i,
@@ -133,6 +146,19 @@ describe('Booking App flow', () => {
     ).toBeInTheDocument();
 
     const continueButton = screen.getByRole('button', { name: 'Continue' });
+    expect(continueButton).toBeDisabled();
+
+    const firstAvailableDate = screen
+      .getAllByRole('button', { name: /Choose /i })
+      .find((button) => !button.hasAttribute('disabled'));
+    if (!firstAvailableDate) {
+      throw new Error('Expected at least one selectable date');
+    }
+
+    firstAvailableDate.focus();
+    await user.keyboard('{Enter}');
+
+    expect(continueButton).toBeEnabled();
     continueButton.focus();
     await user.keyboard('{Enter}');
 

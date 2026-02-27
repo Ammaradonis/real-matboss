@@ -173,7 +173,12 @@ function App() {
             timezoneOptions={timezoneOptions}
             defaultSelectedDate={defaultSelectedDate}
           />
-          <button type="button" className="btn-primary" onClick={() => setStep(2)} disabled={bootstrapLoading}>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => setStep(2)}
+            disabled={bootstrapLoading || !selectedDate}
+          >
             Continue
           </button>
         </div>
@@ -181,21 +186,32 @@ function App() {
 
       {step === 2 && (
         <div className="space-y-4">
-          {loadingSlots ? <p className="text-sm text-slate-400">Loading available slots…</p> : null}
-          <SlotPicker slots={slots} selected={selectedSlot} timezone={timezone} onSelect={selectSlot} />
-          <div className="flex gap-2">
-            <button type="button" className="btn-secondary" onClick={() => setStep(1)}>
-              Back
-            </button>
-            <button
-              type="button"
-              className="btn-primary"
-              disabled={!selectedSlot}
-              onClick={() => setStep(3)}
-            >
-              Continue
-            </button>
-          </div>
+          {selectedDate ? (
+            <>
+              {loadingSlots ? <p className="text-sm text-slate-400">Loading available slots…</p> : null}
+              <SlotPicker slots={slots} selected={selectedSlot} timezone={timezone} onSelect={selectSlot} />
+              <div className="flex gap-2">
+                <button type="button" className="btn-secondary" onClick={() => setStep(1)}>
+                  Back
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={!selectedSlot}
+                  onClick={() => setStep(3)}
+                >
+                  Continue
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-slate-300">Select a date before choosing a time slot.</p>
+              <button type="button" className="btn-secondary" onClick={() => setStep(1)}>
+                Back to calendar
+              </button>
+            </div>
+          )}
         </div>
       )}
 

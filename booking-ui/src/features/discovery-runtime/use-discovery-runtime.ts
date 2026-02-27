@@ -16,7 +16,7 @@ import { DEFAULT_EVENT_TYPE, DEFAULT_PROVIDER } from './defaults';
 
 interface UseDiscoveryRuntimeInput {
   timezone: string;
-  selectedDate: Date;
+  selectedDate: Date | null;
   selectedSlot: SlotDto | null;
   details: SchoolDetails;
   onSlotsReconciled: (slots: SlotDto[]) => void;
@@ -85,6 +85,12 @@ export function useDiscoveryRuntime(input: UseDiscoveryRuntimeInput): DiscoveryR
 
   const loadSlots = useCallback(async () => {
     if (!bootstrapReady || !provider.id) {
+      return;
+    }
+
+    if (!selectedDate) {
+      setSlots([]);
+      onSlotsReconciled([]);
       return;
     }
 
