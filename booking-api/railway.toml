@@ -7,3 +7,5 @@ numReplicas = 1
 restartPolicyType = "ON_FAILURE"
 healthcheckPath = "/api/v1/healthz"
 healthcheckTimeout = 180
+preDeployCommand = "npm run migrate && npm run seed"
+startCommand = "node dist/main.js"
