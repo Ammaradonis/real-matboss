@@ -164,7 +164,7 @@ function App() {
       {bootstrapLoading ? <p className="mb-4 text-sm text-slate-400">Loading provider + event type metadata...</p> : null}
 
       {step === 1 && (
-        <div className="space-y-4">
+        <div className="space-y-5">
           <CalendarGrid
             selected={selectedDate}
             onSelect={selectDate}
@@ -173,14 +173,16 @@ function App() {
             timezoneOptions={timezoneOptions}
             defaultSelectedDate={defaultSelectedDate}
           />
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => setStep(2)}
-            disabled={bootstrapLoading || !selectedDate}
-          >
-            Continue
-          </button>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              className="btn-primary min-w-28"
+              onClick={() => setStep(2)}
+              disabled={bootstrapLoading || !selectedDate}
+            >
+              Continue
+            </button>
+          </div>
         </div>
       )}
 

@@ -57,13 +57,13 @@ export function CalendarGrid({
 
   return (
     <section className="rounded-2xl border border-white/10 bg-mat-surface/80 p-4 sm:p-6">
-      <div className="space-y-1">
-        <h3 className="text-sm uppercase tracking-[0.2em] text-slate-300">Step 1 · Select Date</h3>
-        <p className="text-xs text-slate-400">Choose one day to view available booking times.</p>
-      </div>
+      <div className="mx-auto w-full max-w-[23rem]">
+        <div className="space-y-2 text-center">
+          <h3 className="text-sm uppercase tracking-[0.2em] text-slate-300">Step 1 · Select Date</h3>
+          <p className="text-xs text-slate-400">Choose one day to view available booking times.</p>
+        </div>
 
-      <div className="mx-auto mt-8 w-full max-w-[22rem]">
-        <div className="flex items-center justify-between gap-4">
+        <div className="mt-8 grid grid-cols-[auto,1fr,auto] items-center gap-4">
           <button
             type="button"
             onClick={() => setVisibleMonth((month) => addMonths(month, -1))}
@@ -83,7 +83,7 @@ export function CalendarGrid({
           </button>
         </div>
 
-        <div className="mt-8 grid grid-cols-7 gap-y-2 text-center" aria-hidden="true">
+        <div className="mt-10 grid grid-cols-7 gap-y-2 text-center" aria-hidden="true">
           {WEEKDAYS.map((weekday) => (
             <span key={weekday} className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
               {weekday}
@@ -91,10 +91,10 @@ export function CalendarGrid({
           ))}
         </div>
 
-        <div className="mt-5 grid grid-cols-7 gap-y-3 text-center" role="grid" aria-label="Booking date grid">
+        <div className="mt-6 grid grid-cols-7 gap-y-4 text-center" role="grid" aria-label="Booking date grid">
           {cells.map((day, index) => {
             if (!day) {
-              return <span key={`empty-${index}`} className="mx-auto block h-10 w-10" aria-hidden="true" />;
+              return <span key={`empty-${index}`} className="mx-auto block h-11 w-11" aria-hidden="true" />;
             }
 
             const disabled = isBefore(day, today);
@@ -109,12 +109,12 @@ export function CalendarGrid({
                 aria-pressed={active}
                 onClick={() => onSelect(day)}
                 aria-label={`Choose ${format(day, 'EEEE, MMMM d')}`}
-                className={`mx-auto flex h-10 w-10 flex-col items-center justify-center rounded-full text-sm transition ${
+                className={`mx-auto flex h-11 w-11 flex-col items-center justify-center rounded-full text-sm transition ${
                   active
                     ? 'bg-mat-cyan/20 text-mat-ink'
                     : disabled
                       ? 'text-slate-600'
-                      : 'text-slate-200 hover:bg-white/5 hover:text-mat-ink'
+                      : 'text-slate-200 hover:text-mat-ink'
                 } disabled:cursor-not-allowed`}
               >
                 <span className="text-sm font-medium leading-none">{format(day, 'd')}</span>
@@ -129,7 +129,7 @@ export function CalendarGrid({
           })}
         </div>
 
-        <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
+        <div className="mt-9 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
           <label htmlFor="timezone" className="inline-flex items-center gap-2 text-sm text-slate-300">
             <svg
               aria-hidden="true"
