@@ -1,4 +1,4 @@
-import { startOfDay } from 'date-fns';
+import { addDays, startOfDay } from 'date-fns';
 import { useCallback, useMemo, useReducer } from 'react';
 
 import { reconcileSelectedSlot } from '../../core/temporal/slot-engine';
@@ -109,7 +109,8 @@ function reducer(state: BookingFlowState, action: BookingFlowAction): BookingFlo
 export function useBookingFlow() {
   const [state, dispatch] = useReducer(reducer, {
     step: 1,
-    selectedDate: startOfDay(new Date()),
+    // Default to tomorrow because same-day inventory can be empty under minimum notice rules.
+    selectedDate: addDays(startOfDay(new Date()), 1),
     selectedSlot: null,
     details: INITIAL_DETAILS,
     bookingResult: null,
