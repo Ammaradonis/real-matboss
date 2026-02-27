@@ -1,6 +1,6 @@
-import { addDays, differenceInCalendarDays, format } from 'date-fns';
+import { addDays, format, startOfDay } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { CalendarGrid } from './components/CalendarGrid';
 import { ConfirmationView } from './components/ConfirmationView';
@@ -12,11 +12,83 @@ import { SuccessView } from './components/SuccessView';
 import { useBookingFlow } from './features/booking-flow/use-booking-flow';
 import { useDiscoveryRuntime } from './features/discovery-runtime/use-discovery-runtime';
 
+const DEFAULT_TIMEZONE = 'America/Los_Angeles';
+const TIMEZONE_OPTIONS = [
+  'America/Los_Angeles',
+  'America/Denver',
+  'America/Chicago',
+  'America/New_York',
+  'America/Phoenix',
+  'America/Anchorage',
+  'Pacific/Honolulu',
+  'America/Toronto',
+  'America/Vancouver',
+  'Europe/London',
+  'Europe/Vienna',
+  'Europe/Berlin',
+  'Asia/Tokyo',
+  'Asia/Singapore',
+  'Australia/Sydney',
+  'UTC',
+];
+
+function isValidTimezone(zone: string | undefined): zone is string {
+  if (!zone) {
+    return false;
+  }
+
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: zone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getBrowserTimezone(): string {
+  const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return isValidTimezone(browserTimezone) ? browserTimezone : DEFAULT_TIMEZONE;
+}
+
+function buildTimezoneOptions(currentTimezone: string): string[] {
+  return Array.from(new Set([currentTimezone, ...TIMEZONE_OPTIONS])).filter(isValidTimezone);
+}
+
 function App() {
-  const timezone = useMemo(
-    () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Los_Angeles',
-    [],
-  );
+  const [timezone, setTimezone] = useState<string>(() => getBrowserTimezone());
+  const timezoneOptions = useMemo(() => buildTimezoneOptions(timezone), [timezone]);
+  const defaultSelectedDate = useMemo(() => addDays(startOfDay(new Date()), 1), []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 4000);
+    let active = true;
+
+    const detectTimezoneFromIp = async () => {
+      try {
+        const response = await fetch('https://ipapi.co/json/', { signal: controller.signal });
+        if (!response.ok) {
+          return;
+        }
+        const payload = (await response.json()) as { timezone?: string };
+        if (active && isValidTimezone(payload.timezone)) {
+          setTimezone(payload.timezone);
+        }
+      } catch {
+        // Keep browser timezone fallback when IP geolocation is unavailable.
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    };
+
+    void detectTimezoneFromIp();
+
+    return () => {
+      active = false;
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, []);
 
   const {
     step,
@@ -52,12 +124,6 @@ function App() {
     onBookingComplete: completeBooking,
   });
 
-  const windowEnd = useMemo(() => addDays(new Date(), 60), []);
-  const daysUntilWindowClose = useMemo(
-    () => Math.max(0, differenceInCalendarDays(windowEnd, new Date())),
-    [windowEnd],
-  );
-
   return (
     <main className="grain-overlay mx-auto min-h-screen max-w-5xl px-4 py-8 text-mat-ink">
       <header className="mb-8">
@@ -67,9 +133,7 @@ function App() {
           Rapid discovery booking for martial arts schools. Viewer timezone: <strong>{timezone}</strong>
         </p>
         <p className="text-xs text-slate-500">
-          {format(new Date(), 'PPpp')} local · Vienna clock{' '}
-          {formatInTimeZone(new Date(), 'Europe/Vienna', 'PPpp')} · {daysUntilWindowClose} days left in current
-          60-day booking window.
+          {format(new Date(), 'PPpp')} local · Vienna clock {formatInTimeZone(new Date(), 'Europe/Vienna', 'PPpp')}
         </p>
         <div className="county-orbit mt-4" aria-hidden="true">
           <span>County Coverage Sync</span>
@@ -101,7 +165,14 @@ function App() {
 
       {step === 1 && (
         <div className="space-y-4">
-          <CalendarGrid selected={selectedDate} onSelect={selectDate} />
+          <CalendarGrid
+            selected={selectedDate}
+            onSelect={selectDate}
+            timezone={timezone}
+            onTimezoneChange={setTimezone}
+            timezoneOptions={timezoneOptions}
+            defaultSelectedDate={defaultSelectedDate}
+          />
           <button type="button" className="btn-primary" onClick={() => setStep(2)} disabled={bootstrapLoading}>
             Continue
           </button>
