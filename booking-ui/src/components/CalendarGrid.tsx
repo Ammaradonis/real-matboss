@@ -24,8 +24,24 @@ interface CalendarGridProps {
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-function formatTimezoneLabel(timezone: string): string {
-  return timezone.replace(/_/g, ' ');
+function getTimezoneLabel(tz: string): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en', {
+      timeZone: tz,
+      timeZoneName: 'long',
+    }).formatToParts(new Date());
+    const name = parts.find((p) => p.type === 'timeZoneName')?.value;
+    if (!name) return tz.replace(/_/g, ' ');
+    const time = new Intl.DateTimeFormat('en', {
+      timeZone: tz,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(new Date());
+    return `${name} (${time})`;
+  } catch {
+    return tz.replace(/_/g, ' ');
+  }
 }
 
 export function CalendarGrid({
@@ -63,37 +79,43 @@ export function CalendarGrid({
     <section>
       <div className="mx-auto w-full max-w-[23rem]">
         {/* Month navigation header */}
-        <div className="grid grid-cols-[auto,1fr,auto] items-center gap-4">
+        <div className="flex items-center justify-center gap-6">
           <button
             type="button"
             onClick={() => setVisibleMonth((month) => addMonths(month, -1))}
             aria-label={`Go to ${format(addMonths(visibleMonth, -1), 'MMMM yyyy')}`}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 text-slate-300 transition hover:border-mat-gold/60 hover:text-mat-ink"
+            className="p-1 text-slate-400 transition hover:text-mat-ink"
           >
-            <span aria-hidden="true">&larr;</span>
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
           </button>
-          <h4 className="text-center text-lg font-medium text-mat-ink">{format(visibleMonth, 'MMMM yyyy')}</h4>
+          <h4 className="min-w-[10rem] text-center text-lg font-medium text-mat-ink">
+            {format(visibleMonth, 'MMMM yyyy')}
+          </h4>
           <button
             type="button"
             onClick={() => setVisibleMonth((month) => addMonths(month, 1))}
             aria-label={`Go to ${format(addMonths(visibleMonth, 1), 'MMMM yyyy')}`}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 text-slate-300 transition hover:border-mat-gold/60 hover:text-mat-ink"
+            className="p-1 text-slate-400 transition hover:text-mat-ink"
           >
-            <span aria-hidden="true">&rarr;</span>
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
           </button>
         </div>
 
         {/* Weekday labels */}
         <div className="mt-8 grid grid-cols-7 text-center" aria-hidden="true">
           {WEEKDAYS.map((weekday) => (
-            <span key={weekday} className="py-2 text-[11px] uppercase tracking-[0.18em] text-slate-400">
+            <span key={weekday} className="py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
               {weekday}
             </span>
           ))}
         </div>
 
         {/* Date grid */}
-        <div className="mt-2 grid grid-cols-7 gap-y-1 text-center" role="grid" aria-label="Booking date grid">
+        <div className="mt-2 grid grid-cols-7 gap-y-1.5 text-center" role="grid" aria-label="Booking date grid">
           {cells.map((day, index) => {
             if (!day) {
               return <span key={`empty-${index}`} className="mx-auto block h-11 w-11" aria-hidden="true" />;
@@ -116,28 +138,29 @@ export function CalendarGrid({
                     ? 'bg-mat-cyan/20 text-mat-ink'
                     : disabled
                       ? 'text-slate-600'
-                      : 'text-slate-200 hover:bg-white/[0.06] hover:text-mat-ink'
+                      : 'bg-white/[0.05] text-slate-200 hover:bg-white/[0.12] hover:text-mat-ink'
                 } disabled:cursor-not-allowed`}
               >
                 <span className="text-sm font-medium leading-none">{format(day, 'd')}</span>
-                <span
-                  className={`mt-1 h-1.5 w-1.5 rounded-full ${
-                    marksDefault ? 'bg-mat-gold/70' : 'bg-transparent'
-                  }`}
-                  aria-hidden="true"
-                />
+                {marksDefault && (
+                  <span
+                    className="mt-0.5 h-1.5 w-1.5 rounded-full bg-mat-gold/70"
+                    aria-hidden="true"
+                  />
+                )}
               </button>
             );
           })}
         </div>
 
         {/* Timezone selector */}
-        <div className="mt-10 flex flex-wrap items-center justify-between gap-3">
-          <label htmlFor="timezone" className="inline-flex items-center gap-2 text-sm text-slate-300">
+        <div className="mt-10">
+          <p className="text-xs text-slate-400">Time zone</p>
+          <div className="mt-2 flex items-center gap-2">
             <svg
               aria-hidden="true"
               viewBox="0 0 24 24"
-              className="h-4 w-4"
+              className="h-4 w-4 shrink-0 text-slate-300"
               fill="none"
               stroke="currentColor"
               strokeWidth="1.7"
@@ -145,20 +168,31 @@ export function CalendarGrid({
               <circle cx="12" cy="12" r="9" />
               <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
             </svg>
-            Time zone
-          </label>
-          <select
-            id="timezone"
-            value={timezone}
-            onChange={(event) => onTimezoneChange(event.target.value)}
-            className="input min-w-[240px] flex-1 sm:flex-none"
-          >
-            {timezoneOptions.map((option) => (
-              <option key={option} value={option}>
-                {formatTimezoneLabel(option)}
-              </option>
-            ))}
-          </select>
+            <select
+              id="timezone"
+              value={timezone}
+              onChange={(event) => onTimezoneChange(event.target.value)}
+              className="flex-1 cursor-pointer appearance-none bg-transparent py-1 text-sm text-slate-200 outline-none"
+            >
+              {timezoneOptions.map((option) => (
+                <option key={option} value={option} className="bg-mat-panel text-mat-ink">
+                  {getTimezoneLabel(option)}
+                </option>
+              ))}
+            </select>
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className="h-4 w-4 shrink-0 text-slate-400"
+            >
+              <path
+                fillRule="evenodd"
+                d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </div>
         </div>
 
         {/* Continue action */}
