@@ -18,6 +18,8 @@ interface CalendarGridProps {
   onTimezoneChange: (timezone: string) => void;
   timezoneOptions: string[];
   defaultSelectedDate: Date;
+  onContinue?: () => void;
+  continueDisabled?: boolean;
 }
 
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -33,6 +35,8 @@ export function CalendarGrid({
   onTimezoneChange,
   timezoneOptions,
   defaultSelectedDate,
+  onContinue,
+  continueDisabled,
 }: CalendarGridProps) {
   const today = startOfDay(new Date());
   const [visibleMonth, setVisibleMonth] = useState<Date>(() => startOfMonth(selected ?? defaultSelectedDate));
@@ -56,14 +60,9 @@ export function CalendarGrid({
   }, [visibleMonth]);
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-mat-surface/80 p-4 sm:p-6">
+    <section>
       <div className="mx-auto w-full max-w-[23rem]">
-        <div className="space-y-2 text-center">
-          <h3 className="text-sm uppercase tracking-[0.2em] text-slate-300">Step 1 · Select Date</h3>
-          <p className="text-xs text-slate-400">Choose one day to view available booking times.</p>
-        </div>
-
-        <div className="mt-8 grid grid-cols-[auto,1fr,auto] items-center gap-4">
+        <div className="grid grid-cols-[auto,1fr,auto] items-center gap-4">
           <button
             type="button"
             onClick={() => setVisibleMonth((month) => addMonths(month, -1))}
@@ -83,7 +82,7 @@ export function CalendarGrid({
           </button>
         </div>
 
-        <div className="mt-10 grid grid-cols-7 gap-y-2 text-center" aria-hidden="true">
+        <div className="mt-6 grid grid-cols-7 gap-y-2 text-center" aria-hidden="true">
           {WEEKDAYS.map((weekday) => (
             <span key={weekday} className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
               {weekday}
@@ -91,7 +90,7 @@ export function CalendarGrid({
           ))}
         </div>
 
-        <div className="mt-6 grid grid-cols-7 gap-y-4 text-center" role="grid" aria-label="Booking date grid">
+        <div className="mt-4 grid grid-cols-7 gap-y-2 text-center" role="grid" aria-label="Booking date grid">
           {cells.map((day, index) => {
             if (!day) {
               return <span key={`empty-${index}`} className="mx-auto block h-11 w-11" aria-hidden="true" />;
@@ -157,6 +156,19 @@ export function CalendarGrid({
             ))}
           </select>
         </div>
+
+        {onContinue && (
+          <div className="mt-6 flex justify-end">
+            <button
+              type="button"
+              className="btn-primary min-w-28"
+              onClick={onContinue}
+              disabled={continueDisabled}
+            >
+              Continue
+            </button>
+          </div>
+        )}
       </div>
     </section>
   );
