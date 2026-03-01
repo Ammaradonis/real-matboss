@@ -62,6 +62,7 @@ export function CalendarGrid({
   return (
     <section>
       <div className="mx-auto w-full max-w-[23rem]">
+        {/* Month navigation header */}
         <div className="grid grid-cols-[auto,1fr,auto] items-center gap-4">
           <button
             type="button"
@@ -82,15 +83,17 @@ export function CalendarGrid({
           </button>
         </div>
 
-        <div className="mt-6 grid grid-cols-7 gap-y-2 text-center" aria-hidden="true">
+        {/* Weekday labels */}
+        <div className="mt-8 grid grid-cols-7 text-center" aria-hidden="true">
           {WEEKDAYS.map((weekday) => (
-            <span key={weekday} className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
+            <span key={weekday} className="py-2 text-[11px] uppercase tracking-[0.18em] text-slate-400">
               {weekday}
             </span>
           ))}
         </div>
 
-        <div className="mt-4 grid grid-cols-7 gap-y-2 text-center" role="grid" aria-label="Booking date grid">
+        {/* Date grid */}
+        <div className="mt-2 grid grid-cols-7 gap-y-1 text-center" role="grid" aria-label="Booking date grid">
           {cells.map((day, index) => {
             if (!day) {
               return <span key={`empty-${index}`} className="mx-auto block h-11 w-11" aria-hidden="true" />;
@@ -113,7 +116,7 @@ export function CalendarGrid({
                     ? 'bg-mat-cyan/20 text-mat-ink'
                     : disabled
                       ? 'text-slate-600'
-                      : 'text-slate-200 hover:text-mat-ink'
+                      : 'text-slate-200 hover:bg-white/[0.06] hover:text-mat-ink'
                 } disabled:cursor-not-allowed`}
               >
                 <span className="text-sm font-medium leading-none">{format(day, 'd')}</span>
@@ -128,7 +131,8 @@ export function CalendarGrid({
           })}
         </div>
 
-        <div className="mt-9 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
+        {/* Timezone selector */}
+        <div className="mt-10 flex flex-wrap items-center justify-between gap-3">
           <label htmlFor="timezone" className="inline-flex items-center gap-2 text-sm text-slate-300">
             <svg
               aria-hidden="true"
@@ -157,17 +161,16 @@ export function CalendarGrid({
           </select>
         </div>
 
+        {/* Continue action */}
         {onContinue && (
-          <div className="mt-6 flex justify-end">
-            <button
-              type="button"
-              className="btn-primary min-w-28"
-              onClick={onContinue}
-              disabled={continueDisabled}
-            >
-              Continue
-            </button>
-          </div>
+          <button
+            type="button"
+            className="btn-primary mt-6 w-full"
+            onClick={onContinue}
+            disabled={continueDisabled}
+          >
+            Continue
+          </button>
         )}
       </div>
     </section>
